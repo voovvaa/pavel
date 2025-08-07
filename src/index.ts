@@ -1,5 +1,5 @@
 import { DigitalPersonalityBot } from './bot.js';
-import { validateConfig } from './config.js';
+import { validateConfig, config } from './config.js';
 import { Logger } from './logger.js';
 import { promises as fs } from 'fs';
 
@@ -7,17 +7,23 @@ async function main(): Promise<void> {
   try {
     validateConfig();
     Logger.info('Конфигурация валидна');
+    
+    // Показываем режим работы
+    Logger.info(`🤖 Режим AI: ${config.aiMode}`);
+    if (config.aiMode === 'hybrid') {
+      Logger.info(`📊 Вероятность AI: ${(config.aiProbability * 100).toFixed(0)}%`);
+    }
 
     const bot = new DigitalPersonalityBot();
     
-    // Пытаемся загрузить личность, если файл существует
+    // Пытаемся загрузить характер
     const personalityPath = process.env.PERSONALITY_FILE || './personality.json';
     try {
       await fs.access(personalityPath);
       await bot.loadPersonality(personalityPath);
       Logger.info('🧠 Гейсандр Кулович вспомнил свои привычки!');
     } catch {
-      Logger.warn(`⚠️ Файл личности не найден: ${personalityPath}`);
+      Logger.warn(`⚠️ Файл характера не найден: ${personalityPath}`);
       Logger.warn('Гейсандр Кулович что-то подзабыл свои привычки, работает интуитивно');
       Logger.info('Чтобы Гейсандр Кулович вспомнил манеры чата:');
       Logger.info('  1. Изучите чат: bun run analyze result.json');
@@ -29,13 +35,13 @@ async function main(): Promise<void> {
 
     // Обработка graceful shutdown
     process.on('SIGINT', async () => {
-      Logger.info('Получен сигнал SIGINT, останавливаем бота...');
+      Logger.info('Получен сигнал SIGINT, Гейсандр Кулович засыпает...');
       await bot.stop();
       process.exit(0);
     });
 
     process.on('SIGTERM', async () => {
-      Logger.info('Получен сигнал SIGTERM, останавливаем бота...');
+      Logger.info('Получен сигнал SIGTERM, Гейсандр Кулович засыпает...');
       await bot.stop();
       process.exit(0);
     });

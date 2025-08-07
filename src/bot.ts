@@ -58,11 +58,17 @@ export class DigitalPersonalityBot {
     // Обновляем контекст независимо от того, будем ли отвечать
     this.responseEngine?.updateContext(userName, msg.text);
 
-    // ОСНОВНАЯ ЛОГИКА ЭТАПА 3: Гейсандр Кулович использует паттерны
+    // ОСНОВНАЯ ЛОГИКА ЭТАПА 4: Гейсандр Кулович использует AI + паттерны
     if (this.responseEngine) {
-      // Проверяем нужно ли отвечать
       if (this.responseEngine.shouldRespond(msg.text, userName)) {
-        const response = this.responseEngine.generateResponse(msg.text);
+        // Показываем индикатор печати для более человечного поведения
+        await this.bot.sendChatAction(msg.chat.id, 'typing');
+        
+        // Добавляем небольшую задержку для реалистичности
+        const thinkingTime = Math.random() * 2000 + 1000; // 1-3 секунды
+        await new Promise(resolve => setTimeout(resolve, thinkingTime));
+        
+        const response = await this.responseEngine.generateResponse(msg.text, userName);
         
         if (response) {
           try {
@@ -78,7 +84,7 @@ export class DigitalPersonalityBot {
         Logger.debug('Гейсандр Кулович решил не встревать в разговор');
       }
     } else {
-      // Fallback: если личность не загружена
+      // Fallback: если характер не загружен
       const responses = [
         "Привет! Что-то голова сегодня не варит, забыл о чем мы говорили...",
         "Йо! Только проснулся, еще не включился в тему",  
@@ -99,21 +105,19 @@ export class DigitalPersonalityBot {
 
 
   public async stop(): Promise<void> {
-    if (!this.isRunning) {
-      return;
-    }
+    if (!this.isRunning) return;
 
     try {
       await this.bot.stopPolling();
       this.isRunning = false;
-      Logger.info('Бот остановлен');
+      Logger.info('Гейсандр Кулович заснул');
     } catch (error) {
-      Logger.error('Ошибка при остановке бота:', error);
+      Logger.error('Ошибка при усыплении Гейсандра Куловича:', error);
     }
   }
 
   /**
-   * Загружает личность бота из файла
+   * Загружает характер бота из файла
    */
   async loadPersonality(personalityPath: string): Promise<void> {
     try {
@@ -125,8 +129,8 @@ export class DigitalPersonalityBot {
       this.responseEngine = new ResponseEngine(personality);
       
       Logger.info(`✅ Гейсандр Кулович изучил свой характер: ${personality.patterns.length} особенностей`);
-      Logger.info(`Гейсандр Кулович готов! Общительность: ${(personality.responseStyle.activityLevel * 100).toFixed(1)}%`);
-      Logger.info(`Активен в: ${personality.schedule.activeHours.join(', ')} часов`);
+      Logger.info(`Режим работы: ${config.aiMode} (модель: ${config.openaiModel})`);
+      Logger.info(`Общительность: ${(personality.responseStyle.activityLevel * 100).toFixed(1)}%`);
       
     } catch (error) {
       Logger.error('Ошибка при изучении характера:', error);
@@ -136,25 +140,26 @@ export class DigitalPersonalityBot {
 
   public async start(): Promise<void> {
     if (this.isRunning) {
-      Logger.warn('Бот уже запущен');
+      Logger.warn('Гейсандр Кулович уже активен');
       return;
     }
 
     try {
       const botInfo = await this.bot.getMe();
-      Logger.info(`Бот запущен: @${botInfo.username} (${botInfo.first_name})`);
+      Logger.info(`Гейсандр Кулович проснулся: @${botInfo.username} (${botInfo.first_name})`);
       
       this.isRunning = true;
       
       if (this.responseEngine) {
         Logger.info('🧠 Гейсандр Кулович вспомнил свой характер и готов к общению!');
+        Logger.info(`🤖 AI режим: ${config.aiMode} (вероятность: ${(config.aiProbability * 100).toFixed(0)}%)`);
       } else {
         Logger.warn('⚠️ Гейсандр Кулович что-то подзабыл свои привычки (fallback режим)');
         Logger.info('Чтобы Гейсандр вспомнил себя, используйте loadPersonality() перед запуском');
       }
 
     } catch (error) {
-      Logger.error('Ошибка при запуске бота:', error);
+      Logger.error('Ошибка при пробуждении Гейсандра Куловича:', error);
       throw error;
     }
   }
