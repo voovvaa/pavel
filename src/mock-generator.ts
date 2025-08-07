@@ -92,7 +92,7 @@ export class MockChatGenerator {
       return this.pickRandom(user.messageStyle) + (Math.random() < 0.3 ? ' ' + this.pickRandom(user.emojis) : '');
     } else if (rand < 0.6) {
       // Сообщение с эмодзи и словами из пула
-      const words = this.pickRandom(user.wordsPool, 2, 4);
+      const words = this.pickRandom(user.wordsPool, 2, 4) as string[];
       const emoji = Math.random() < 0.5 ? ' ' + this.pickRandom(user.emojis) : '';
       return words.join(' ') + emoji;
     } else {
@@ -103,11 +103,11 @@ export class MockChatGenerator {
       const feeling = this.pickRandom(this.feelings);
       const opinion = this.pickRandom(this.opinions);
       
-      const message = template
-        .replace('{topic}', topic)
-        .replace('{action}', action)
-        .replace('{feeling}', feeling)
-        .replace('{opinion}', opinion);
+      const message = (template as string)
+        .replace('{topic}', topic as string)
+        .replace('{action}', action as string)
+        .replace('{feeling}', feeling as string)
+        .replace('{opinion}', opinion as string);
         
       return message + (Math.random() < 0.2 ? ' ' + this.pickRandom(user.emojis) : '');
     }
@@ -170,7 +170,7 @@ export class MockChatGenerator {
    */
   private generateMediaMessage(user: MockUser, timestamp: Date): TelegramExportMessage {
     const mediaTypes = ['photo', 'sticker', 'document', 'voice_message'] as const;
-    const mediaType = this.pickRandom(mediaTypes) as any;
+    const mediaType = this.pickRandom([...mediaTypes]) as any;
     
     const baseMessage: TelegramExportMessage = {
       id: Math.floor(Math.random() * 1000000),

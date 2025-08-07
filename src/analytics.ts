@@ -13,10 +13,14 @@ export class ChatAnalyzer {
   }
 
   /**
-   * Полный анализ чата
+   * Полный анализ чата с улучшенной фильтрацией
    */
   analyze(): ChatAnalytics {
-    Logger.info('Начинаем полный анализ чата...');
+    Logger.info('Начинаем улучшенный анализ чата...');
+    
+    // Показываем статистику фильтрации
+    const filterStats = TelegramParser.getFilteringStats(this.export.messages);
+    this.logFilteringStats(filterStats);
     
     const users = this.analyzeUsers();
     const dateRange = this.getDateRange();
@@ -32,22 +36,25 @@ export class ChatAnalyzer {
       totalUsers: users.length,
       dateRange,
       messagesPerDay: Math.round(this.validMessages.length / dateRange.days),
-      topUsers: users.slice(0, 10), // Топ 10 пользователей
-      popularWords: wordStats.slice(0, 50), // Топ 50 слов
-      popularEmojis: emojiStats.slice(0, 20), // Топ 20 эмодзи
+      topUsers: users.slice(0, 10),
+      popularWords: wordStats.slice(0, 50),
+      popularEmojis: emojiStats.slice(0, 20),
       messageTypes,
       timeActivity: timeStats,
       dayActivity: dayStats,
       averageMessageLength: this.calculateAverageMessageLength(),
-      mediaStats
+      mediaStats,
+      // Новые поля
+      commonPatterns: [],
+      conversationFlows: []
     };
 
-    Logger.info('Анализ чата завершен');
+    Logger.info('Улучшенный анализ чата завершен');
     return analytics;
   }
 
   /**
-   * Анализ пользователей
+   * Анализ пользователей с использованием чистого текста
    */
   private analyzeUsers(): UserStats[] {
     const userMap = new Map<string, {
@@ -79,10 +86,11 @@ export class ChatAnalyzer {
   }
 
   /**
-   * Анализ конкретного пользователя
+   * Анализ конкретного пользователя с чистым текстом
    */
   private analyzeUser(id: string, name: string, messages: TelegramExportMessage[]): UserStats {
-    const texts = messages.map(m => TelegramParser.extractText(m)).filter(t => t);
+    // Используем чистый текст без тегов пользователей
+    const texts = messages.map(m => TelegramParser.extractCleanText(m)).filter(t => t);
     const allText = texts.join(' ');
     const characterCount = allText.length;
     
@@ -124,14 +132,14 @@ export class ChatAnalyzer {
   }
 
   /**
-   * Анализ популярных слов
+   * Анализ популярных слов с исключением тегов
    */
   private analyzeWords(): Array<{ word: string; count: number }> {
     const wordCount = new Map<string, number>();
     
     for (const message of this.validMessages) {
-      const text = TelegramParser.extractText(message);
-      const words = TelegramParser.extractWords(text);
+      const cleanText = TelegramParser.extractCleanText(message);
+      const words = TelegramParser.extractWords(cleanText);
       
       for (const word of words) {
         wordCount.set(word, (wordCount.get(word) || 0) + 1);
@@ -150,7 +158,7 @@ export class ChatAnalyzer {
     const emojiCount = new Map<string, number>();
     
     for (const message of this.validMessages) {
-      const text = TelegramParser.extractText(message);
+      const text = TelegramParser.extractText(message); // Оригинальный текст для эмодзи
       const emojis = TelegramParser.extractEmojis(text);
       
       for (const emoji of emojis) {
@@ -246,7 +254,7 @@ export class ChatAnalyzer {
     const types: { [type: string]: number } = {};
     
     for (const message of this.validMessages) {
-      const hasText = Boolean(TelegramParser.extractText(message));
+      const hasText = Boolean(TelegramParser.extractCleanText(message));
       const hasMedia = Boolean(message.media_type);
       
       if (hasText && !hasMedia) {
@@ -345,12 +353,26 @@ export class ChatAnalyzer {
    */
   private calculateAverageMessageLength(): number {
     const textMessages = this.validMessages
-      .map(m => TelegramParser.extractText(m))
+      .map(m => TelegramParser.extractCleanText(m))
       .filter(t => t);
     
     if (textMessages.length === 0) return 0;
     
     const totalLength = textMessages.reduce((sum, text) => sum + text.length, 0);
     return Math.round(totalLength / textMessages.length);
+  }
+
+  /**
+   * Логирует статистику фильтрации
+   */
+  private logFilteringStats(stats: any): void {
+    Logger.info('📊 Статистика фильтрации сообщений:');
+    Logger.info(`├─ Всего сообщений: ${stats.total}`);
+    Logger.info(`├─ Валидных: ${stats.valid}`);
+    Logger.info(`├─ Пересланных (исключено): ${stats.forwarded}`);
+    Logger.info(`├─ Ответов на пересылки (включено): ${stats.repliesToForwarded}`);
+    Logger.info(`├─ С тегами пользователей: ${stats.withUserTags}`);
+    Logger.info(`├─ Для анализа: ${stats.finalForAnalysis}`);
+    Logger.info(`└─ Для паттернов: ${stats.finalForPatterns}`);
   }
 }

@@ -28,22 +28,18 @@ async function main() {
       process.exit(1);
     }
 
-    Logger.info('🚀 Начинаем анализ чата...');
+    Logger.info('🚀 Начинаем улучшенный анализ чата...');
     
-    // Загружаем экспорт
     const exportData = await TelegramParser.loadExport(filePath);
-    
-    // Анализируем
     const analyzer = new ChatAnalyzer(exportData);
     const analytics = analyzer.analyze();
     
-    // Выводим результаты
-    ConsoleVisualizer.displayAnalytics(analytics);
+    // Передаем исходные данные для показа статистики фильтрации
+    ConsoleVisualizer.displayAnalytics(analytics, exportData);
     
-    // Сохраняем результаты в JSON
     const outputPath = filePath.replace('.json', '_analysis.json');
     await fs.writeFile(outputPath, JSON.stringify(analytics, null, 2), 'utf-8');
-    Logger.info(`💾 Анализ сохранен в: ${outputPath}`);
+    Logger.info(`💾 Улучшенный анализ сохранен в: ${outputPath}`);
 
   } catch (error) {
     Logger.error('Ошибка анализа:', error);

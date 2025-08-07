@@ -48,10 +48,72 @@ export class TelegramParser {
   }
 
   /**
-   * Фильтрует сообщения по типу и валидности
+   * Извлекает "чистый" текст без тегов пользователей для анализа
+   */
+  static extractCleanText(message: TelegramExportMessage): string {
+    const originalText = this.extractText(message);
+    if (!originalText) return '';
+    
+    // Удаляем теги пользователей (@username, @firstName и т.д.)
+    let cleanText = originalText.replace(/@\w+/g, '').trim();
+    
+    // Удаляем множественные пробелы
+    cleanText = cleanText.replace(/\s+/g, ' ').trim();
+    
+    return cleanText;
+  }
+
+  /**
+   * Проверяет является ли сообщение пересланным
+   */
+  static isForwardedMessage(message: TelegramExportMessage): boolean {
+    // Проверяем поле forwarded_from (стандартное поле пересылки)
+    if (message.forwarded_from) {
+      return true;
+    }
+    
+    // Проверяем паттерны пересланных сообщений в тексте
+    const text = this.extractText(message);
+    if (!text) return false;
+    
+    const forwardPatterns = [
+      /^Пересланное сообщение/i,
+      /^Forwarded from/i,
+      /^Переслано от/i,
+      /^Переслано из/i,
+      // Паттерны для разных языков
+      /^Forwarded message/i,
+      /^Message forwarded/i
+    ];
+    
+    return forwardPatterns.some(pattern => pattern.test(text.trim()));
+  }
+
+  /**
+   * Проверяет является ли сообщение ответом на пересланное сообщение
+   */
+  static isReplyToForwarded(
+    message: TelegramExportMessage, 
+    allMessages: TelegramExportMessage[]
+  ): boolean {
+    if (!message.reply_to_message_id) return false;
+    
+    // Находим сообщение на которое отвечают
+    const repliedMessage = allMessages.find(
+      msg => msg.id === message.reply_to_message_id
+    );
+    
+    if (!repliedMessage) return false;
+    
+    // Проверяем было ли то сообщение пересланным
+    return this.isForwardedMessage(repliedMessage);
+  }
+
+  /**
+   * Фильтрует сообщения по типу и валидности (обновленная версия)
    */
   static filterValidMessages(messages: TelegramExportMessage[]): TelegramExportMessage[] {
-    return messages.filter(msg => {
+    const validMessages = messages.filter(msg => {
       // Только обычные сообщения с текстом или медиа
       if (msg.type !== 'message') return false;
       
@@ -63,6 +125,58 @@ export class TelegramParser {
       
       return true;
     });
+
+    Logger.info(`Отфильтровано валидных сообщений: ${validMessages.length}`);
+    
+    // Дополнительная фильтрация для анализа
+    const nonForwardedMessages = validMessages.filter(msg => {
+      // Исключаем пересланные сообщения
+      if (this.isForwardedMessage(msg)) {
+        return false;
+      }
+      
+      return true;
+    });
+
+    Logger.info(`Исключено пересланных сообщений: ${validMessages.length - nonForwardedMessages.length}`);
+    
+    return nonForwardedMessages;
+  }
+
+  /**
+   * Фильтрует сообщения для извлечения паттернов (включает ответы на пересылки)
+   */
+  static filterMessagesForPatterns(messages: TelegramExportMessage[]): TelegramExportMessage[] {
+    const validMessages = messages.filter(msg => {
+      // Только обычные сообщения с текстом или медиа
+      if (msg.type !== 'message') return false;
+      
+      // Игнорируем служебные сообщения
+      if (msg.action) return false;
+      
+      // Должен быть отправитель
+      if (!msg.from && !msg.from_id) return false;
+      
+      return true;
+    });
+
+    const filteredMessages = validMessages.filter(msg => {
+      // Исключаем пересланные сообщения
+      if (this.isForwardedMessage(msg)) {
+        return false;
+      }
+      
+      // НО включаем ответы на пересланные сообщения (это обсуждение контекста)
+      if (this.isReplyToForwarded(msg, validMessages)) {
+        Logger.debug(`Включаем ответ на пересылку: ${this.extractText(msg).substring(0, 50)}...`);
+        return true;
+      }
+      
+      return true;
+    });
+
+    Logger.info(`Для паттернов отобрано сообщений: ${filteredMessages.length}`);
+    return filteredMessages;
   }
 
   /**
@@ -83,14 +197,20 @@ export class TelegramParser {
   }
 
   /**
-   * Очищает текст для анализа слов
+   * Очищает текст для анализа слов (убирает теги пользователей)
    */
   static cleanTextForWordAnalysis(text: string): string {
-    return text
+    // Сначала убираем теги пользователей
+    let cleanText = text.replace(/@\w+/g, ' ');
+    
+    // Затем стандартная очистка
+    cleanText = cleanText
       .toLowerCase()
       .replace(/[^\w\sа-яё]/gi, ' ') // Только буквы и пробелы
       .replace(/\s+/g, ' ') // Множественные пробелы в один
       .trim();
+      
+    return cleanText;
   }
 
   /**
@@ -169,5 +289,65 @@ export class TelegramParser {
     ]);
     
     return words.filter(word => !stopWords.has(word));
+  }
+
+  /**
+   * Извлекает теги пользователей из сообщения
+   */
+  static extractUserTags(text: string): string[] {
+    const tagRegex = /@(\w+)/g;
+    const tags: string[] = [];
+    let match;
+    
+    while ((match = tagRegex.exec(text)) !== null) {
+      tags.push(match[1]); // Извлекаем имя пользователя без @
+    }
+    
+    return tags;
+  }
+
+  /**
+   * Получает статистику фильтрации для отчета
+   */
+  static getFilteringStats(messages: TelegramExportMessage[]): {
+    total: number;
+    valid: number;
+    forwarded: number;
+    repliesToForwarded: number;
+    withUserTags: number;
+    finalForAnalysis: number;
+    finalForPatterns: number;
+  } {
+    const total = messages.length;
+    
+    const valid = messages.filter(msg => 
+      msg.type === 'message' && !msg.action && (msg.from || msg.from_id)
+    ).length;
+    
+    const forwarded = messages.filter(msg => 
+      this.isForwardedMessage(msg)
+    ).length;
+    
+    const repliesToForwarded = messages.filter(msg =>
+      this.isReplyToForwarded(msg, messages)
+    ).length;
+    
+    const withUserTags = messages.filter(msg => {
+      const text = this.extractText(msg);
+      return text && this.extractUserTags(text).length > 0;
+    }).length;
+    
+    const finalForAnalysis = this.filterValidMessages(messages).length;
+    const finalForPatterns = this.filterMessagesForPatterns(messages).length;
+    
+    return {
+      total,
+      valid,
+      forwarded,
+      repliesToForwarded,
+      withUserTags,
+      finalForAnalysis,
+      finalForPatterns
+    };
   }
 }

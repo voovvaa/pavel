@@ -121,4 +121,67 @@ export interface ChatAnalytics {
     voice: number;
     audio: number;
   };
+  // Новые поля для паттернов
+  commonPatterns?: ResponsePattern[];
+  conversationFlows?: Array<{
+    trigger: string;
+    responses: Array<{
+      text: string;
+      frequency: number;
+    }>;
+  }>;
+}
+
+// Новые типы для системы паттернов
+export interface TriggerPattern {
+  id: string;
+  keywords: string[];
+  responses: string[];
+  weight: number;
+  context?: string;
+  userSpecific?: boolean;
+  timeSpecific?: {
+    hours?: number[];
+    days?: number[];
+  };
+}
+
+export interface ResponsePattern {
+  trigger: string;
+  response: string;
+  frequency: number;
+  confidence: number;
+  context: {
+    prevMessages?: string[];
+    timeOfDay?: number;
+    dayOfWeek?: number;
+    author?: string;
+  };
+}
+
+export interface ChatContext {
+  recentMessages: Array<{
+    text: string;
+    author: string;
+    timestamp: Date;
+  }>;
+  currentTopic?: string;
+  activeUsers: Set<string>;
+  lastBotResponse?: Date;
+  messagesSinceLastResponse: number;
+}
+
+export interface BotPersonality {
+  patterns: TriggerPattern[];
+  responseStyle: {
+    averageLength: number;
+    commonWords: string[];
+    commonEmojis: string[];
+    formalityLevel: number; // 0-1
+    activityLevel: number; // 0-1 (как часто отвечает)
+  };
+  schedule: {
+    activeHours: number[];
+    activeDays: number[];
+  };
 }

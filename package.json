@@ -11,7 +11,8 @@
     "prod": "bun run dist/index.js",
     "type-check": "tsc --noEmit",
     "analyze": "bun run src/analyzer.ts",
-    "generate-mock": "bun run src/mock-generator.ts"
+    "generate-mock": "bun run src/mock-generator.ts",
+    "patterns": "bun run src/pattern-extractor-cli.ts"
   },
   "keywords": ["telegram", "bot", "ai", "personality"],
   "author": "Your Name",
