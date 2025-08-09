@@ -19,7 +19,9 @@
     "analyze-profiles": "bun run src/analysis/profile-tester.ts",
     "test-adaptive": "bun run src/ai/adaptive-tester.ts",
     "compare-models": "bun run src/ai/model-comparison-tester.ts",
-    "test-speed": "bun run src/ai/speed-comparison-tester.ts"
+    "test-speed": "bun run src/ai/speed-comparison-tester.ts",
+    "test-images": "bun run src/ai/image-tester-cli.ts",
+    "cost-analysis": "bun run src/ai/cost-analyzer.ts"
   },
   "keywords": ["telegram", "bot", "ai", "personality"],
   "author": "Your Name",

@@ -1,7 +1,8 @@
 import { 
   BotPersonality, 
   TriggerPattern, 
-  ChatContext 
+  ChatContext,
+  ImageAnalysisResult
 } from '../core/types.js';
 import { Logger } from '../utils/logger.js';
 import { AIEngine } from './ai-engine.js';
@@ -206,7 +207,13 @@ export class ResponseEngine {
   /**
    * Обновляет контекст разговора и сохраняет в память
    */
-  updateContext(author: string, messageText: string, messageId?: number): void {
+  updateContext(
+    author: string, 
+    messageText: string, 
+    messageId?: number, 
+    messageType: 'text' | 'image' | 'media' = 'text',
+    imageAnalysis?: ImageAnalysisResult
+  ): void {
     this.context.recentMessages.push({
       text: messageText,
       author,
@@ -250,12 +257,17 @@ export class ResponseEngine {
         if (messageText.toLowerCase().includes('проект')) {
           importantTopics.push('проекты');
         }
+
+        // Добавляем темы из анализа изображений
+        if (imageAnalysis && imageAnalysis.tags.length > 0) {
+          importantTopics.push(...imageAnalysis.tags);
+        }
         
         importantTopics.forEach(topic => {
           this.updateTopicInDatabase(topic, author);
         });
         
-        Logger.debug(`Сохраняем сообщение: важность=${importance}, эмоция=${emotion}, темы=${JSON.stringify(topics)}`);
+        Logger.debug(`Сохраняем сообщение: важность=${importance}, эмоция=${emotion}, темы=${JSON.stringify(topics)}, тип=${messageType}`);
         
         this.memoryManager.saveMessage({
           chatId: this.chatId,
@@ -263,12 +275,13 @@ export class ResponseEngine {
           author: author,
           content: messageText,
           timestamp: new Date(),
-          messageType: 'text',
+          messageType: messageType as "text" | "media" | "system" | "image",
           isFromBot: author === 'Гейсандр Кулович',
           importance: importance,
           emotion: emotion as "positive" | "negative" | "neutral" | "excited" | "angry" | "sad" | "funny" | "friendly" | "curious" | "engaging",
           topics: topics,
-          mentions: this.extractMentions(messageText)
+          mentions: this.extractMentions(messageText),
+          imageAnalysis: imageAnalysis
         });
 
         // Обновляем отношения с пользователем
@@ -508,6 +521,28 @@ export class ResponseEngine {
     }
 
     return baseStats;
+  }
+
+  /**
+   * Возвращает последние сообщения из контекста для анализа изображений
+   */
+  public getRecentMessages(): string[] {
+    return this.context.recentMessages.slice(-5).map(msg => `${msg.author}: ${msg.text}`);
+  }
+
+  /**
+   * Возвращает профиль пользователя (заглушка для интеграции с AI engine)
+   */
+  public getUserProfile(userName: string): any | undefined {
+    // Интеграция с профайлером будет добавлена позже
+    return undefined;
+  }
+
+  /**
+   * Возвращает личность бота
+   */
+  public getPersonality(): BotPersonality {
+    return this.personality;
   }
 
   /**

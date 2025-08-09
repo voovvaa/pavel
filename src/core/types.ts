@@ -1,5 +1,21 @@
 import type { User, Message } from 'node-telegram-bot-api';
 
+// Типы для анализа изображений (ЭТАП 7)
+export interface ImageAnalysisResult {
+  description: string;
+  content: string;
+  type: 'photo' | 'meme' | 'screenshot' | 'document' | 'other';
+  mood?: string;
+  isNSFW?: boolean;
+  containsText?: boolean;
+  textContent?: string;
+  isHumorous?: boolean;
+  tags: string[];
+}
+
+// Re-export UserProfile из user-profiler для удобства
+export type { UserProfile } from '../analysis/user-profiler.js';
+
 // Используем стандартные типы Telegram для базовых сущностей
 export type TelegramUser = User;
 
@@ -167,13 +183,16 @@ export interface MemoryEntry {
   author: string;
   content: string;
   timestamp: Date;
-  messageType: 'text' | 'media' | 'system';
+  messageType: 'text' | 'media' | 'system' | 'image';
   isFromBot: boolean;
   context?: string;
   importance: number; // 0-1, важность сообщения
   emotion: 'positive' | 'negative' | 'neutral' | 'excited' | 'angry' | 'sad' | 'funny' | 'friendly' | 'curious' | 'engaging';
   topics?: string[]; // Темы которых касается сообщение
   mentions?: string[]; // Упоминания пользователей
+  // Новые поля для изображений
+  imageAnalysis?: ImageAnalysisResult;
+  filePath?: string; // Путь к сохраненному файлу изображения
 }
 
 export interface ConversationSummary {
