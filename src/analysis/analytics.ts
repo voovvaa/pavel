@@ -1,6 +1,6 @@
-import { TelegramExport, TelegramExportMessage, UserStats, ChatAnalytics } from './types.js';
+import { TelegramExport, TelegramExportMessage, UserStats, ChatAnalytics } from '../core/types.js';
 import { TelegramParser } from './parser.js';
-import { Logger } from './logger.js';
+import { Logger } from '../utils/logger.js';
 
 export class ChatAnalyzer {
   private export: TelegramExport;

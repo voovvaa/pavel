@@ -159,6 +159,70 @@ export interface ResponsePattern {
   };
 }
 
+// Новые типы для системы памяти
+export interface MemoryEntry {
+  id?: number;
+  chatId: string;
+  messageId: number;
+  author: string;
+  content: string;
+  timestamp: Date;
+  messageType: 'text' | 'media' | 'system';
+  isFromBot: boolean;
+  context?: string;
+  importance: number; // 0-1, важность сообщения
+  emotion: 'positive' | 'negative' | 'neutral' | 'excited' | 'angry' | 'sad' | 'funny' | 'friendly' | 'curious' | 'engaging';
+  topics?: string[]; // Темы которых касается сообщение
+  mentions?: string[]; // Упоминания пользователей
+}
+
+export interface ConversationSummary {
+  id?: number;
+  chatId: string;
+  dateStart: Date;
+  dateEnd: Date;
+  participants: string[];
+  mainTopics: string[];
+  keyEvents: string[];
+  mood: string;
+  summary: string;
+  messageCount: number;
+}
+
+export interface UserRelationship {
+  id?: number;
+  chatId: string;
+  userName: string;
+  relationship: 'friend' | 'colleague' | 'acquaintance' | 'unknown';
+  lastInteraction: Date;
+  interactionCount: number;
+  commonTopics: string[];
+  personalNotes: string[];
+  mood: 'positive' | 'negative' | 'neutral';
+}
+
+export interface ChatTopic {
+  id?: number;
+  chatId: string;
+  topic: string;
+  firstMentioned: Date;
+  lastMentioned: Date;
+  mentionCount: number;
+  relatedUsers: string[];
+  importance: number;
+  status: 'active' | 'resolved' | 'ongoing' | 'archived';
+}
+
+export interface MemoryContext {
+  recentMessages: MemoryEntry[];
+  relevantHistory: MemoryEntry[];
+  conversationSummaries: ConversationSummary[];
+  userRelationships: Map<string, UserRelationship>;
+  activeTopics: ChatTopic[];
+  currentMood: string;
+}
+
+// Обновляем ChatContext для интеграции с памятью
 export interface ChatContext {
   recentMessages: Array<{
     text: string;
@@ -169,6 +233,9 @@ export interface ChatContext {
   activeUsers: Set<string>;
   lastBotResponse?: Date;
   messagesSinceLastResponse: number;
+  // Новые поля для памяти
+  memoryContext?: MemoryContext;
+  conversationId?: string;
 }
 
 export interface BotPersonality {

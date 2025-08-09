@@ -1,0 +1,232 @@
+import fs from 'fs';
+import { Database } from 'bun:sqlite';
+
+// Загружаем историю чата
+const historyFile = './chat/result.json';
+const dbPath = './memory.db';
+
+console.log('📚 Загружаем историю чата...');
+const history = JSON.parse(fs.readFileSync(historyFile, 'utf8'));
+
+// Подключаемся к базе данных
+const db = new Database(dbPath);
+
+// Подготавливаем запросы
+const insertMessage = db.prepare(`
+  INSERT OR IGNORE INTO messages (
+    chat_id, message_id, author, content, timestamp, 
+    message_type, is_from_bot, importance, emotion, topics, mentions
+  ) VALUES ($chat_id, $message_id, $author, $content, $timestamp, 'text', 0, $importance, $emotion, $topics, $mentions)
+`);
+
+const insertTopic = db.prepare(`
+  INSERT OR IGNORE INTO chat_topics (
+    chat_id, topic, first_mentioned, last_mentioned,
+    mention_count, related_users, importance, status
+  ) VALUES ($chat_id, $topic, $first_mentioned, $last_mentioned, 1, $related_users, 0.5, 'active')
+`);
+
+const updateTopic = db.prepare(`
+  UPDATE chat_topics 
+  SET last_mentioned = $last_mentioned, mention_count = mention_count + 1,
+      importance = MIN(1.0, importance + 0.05)
+  WHERE chat_id = $chat_id AND topic = $topic
+`);
+
+const insertUser = db.prepare(`
+  INSERT OR IGNORE INTO user_relationships (
+    chat_id, user_name, relationship, last_interaction,
+    interaction_count, common_topics, mood
+  ) VALUES ($chat_id, $user_name, 'friend', $last_interaction, 1, '[]', 'neutral')
+`);
+
+const updateUser = db.prepare(`
+  UPDATE user_relationships 
+  SET last_interaction = $last_interaction, interaction_count = interaction_count + 1,
+      updated_at = CURRENT_TIMESTAMP
+  WHERE chat_id = $chat_id AND user_name = $user_name
+`);
+
+// Фильтруем только недавние сообщения (последние 6 месяцев) и только от людей
+const sixMonthsAgo = new Date();
+sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+console.log(`📅 Импортируем сообщения с ${sixMonthsAgo.toISOString().split('T')[0]}...`);
+
+const messages = history.messages.filter(msg => {
+  if (msg.type !== 'message') return false;
+  if (!msg.text || typeof msg.text !== 'string') return false;
+  if (msg.text.trim().length < 3) return false; // Пропускаем очень короткие
+  
+  const messageDate = new Date(msg.date);
+  return messageDate >= sixMonthsAgo;
+});
+
+console.log(`✅ Найдено ${messages.length} подходящих сообщений для импорта`);
+
+// Мапим имена пользователей (чтобы "Володя" = "Володя")
+const nameMap = {
+  'Володя': 'Володя',
+  'Леонид Колмаков': 'Леонид',
+  'Бодя': 'Бодя',
+  'Гейсандр Кулович': 'Гейсандр Кулович'
+};
+
+// Функция для извлечения тем из текста
+function extractTopics(text) {
+  const words = text.toLowerCase()
+    .replace(/[^\w\sа-яё]/gi, ' ')
+    .split(/\s+/)
+    .filter(word => word.length >= 4);
+  
+  const stopWords = new Set([
+    'саня', 'гейсандр', 'кулович', 'вроде', 'думаю', 'норм', 'ваще',
+    'богдан', 'онлайн', 'реально', 'только', 'говорил', 'помню',
+    'макс', 'ушел', 'была', 'были', 'есть', 'будет', 'может', 'очень',
+    'володя', 'леонид', 'бодя'
+  ]);
+  
+  return words
+    .filter(word => !stopWords.has(word) && word.length >= 5)
+    .slice(0, 3); // Только топ-3 темы
+}
+
+// Функция определения эмоции
+function detectEmotion(text) {
+  const lowerText = text.toLowerCase();
+  
+  const emotions = {
+    positive: ['круто', 'класс', 'супер', 'отлично', 'здорово', 'норм', 'збс', 'кайф'],
+    negative: ['плохо', 'ужас', 'бесит', 'грустно', 'блять', 'пиздец', 'херня'],
+    excited: ['вау', 'офигеть', 'охуеть', 'пиздато', 'ахуенно'],
+    friendly: ['привет', 'здарова', 'как дела', 'что делаешь']
+  };
+  
+  for (const [emotion, words] of Object.entries(emotions)) {
+    if (words.some(word => lowerText.includes(word))) {
+      return emotion;
+    }
+  }
+  
+  return 'neutral';
+}
+
+// Рассчитываем важность сообщения
+function calculateImportance(text, author) {
+  let importance = 0.3;
+  
+  // Прямые обращения важнее
+  if (text.toLowerCase().includes('гейсандр') || text.toLowerCase().includes('саня')) {
+    importance += 0.4;
+  }
+  
+  // Длинные сообщения важнее
+  if (text.length > 100) importance += 0.2;
+  if (text.includes('?')) importance += 0.1;
+  
+  return Math.min(1.0, importance);
+}
+
+// Импортируем сообщения
+console.log('💾 Начинаем импорт...');
+
+const chatId = '1460632856'; // ID чата из истории
+let importedCount = 0;
+let skippedCount = 0;
+
+db.run('BEGIN TRANSACTION');
+
+for (const msg of messages) {
+  try {
+    const author = nameMap[msg.from] || msg.from;
+    const text = msg.text.trim();
+    const timestamp = new Date(msg.date).toISOString();
+    const topics = extractTopics(text);
+    const emotion = detectEmotion(text);
+    const importance = calculateImportance(text, author);
+    
+    // Сохраняем сообщение
+    insertMessage.run({
+      $chat_id: chatId,
+      $message_id: msg.id,
+      $author: author,
+      $content: text,
+      $timestamp: timestamp,
+      $importance: importance,
+      $emotion: emotion,
+      $topics: JSON.stringify(topics),
+      $mentions: JSON.stringify([])
+    });
+    
+    // Обновляем темы
+    topics.forEach(topic => {
+      try {
+        const result = updateTopic.run({
+          $last_mentioned: timestamp,
+          $chat_id: chatId,
+          $topic: topic
+        });
+        if (result.changes === 0) {
+          insertTopic.run({
+            $chat_id: chatId,
+            $topic: topic,
+            $first_mentioned: timestamp,
+            $last_mentioned: timestamp,
+            $related_users: JSON.stringify([author])
+          });
+        }
+      } catch (error) {
+        // Игнорируем ошибки дубликатов
+      }
+    });
+    
+    // Обновляем пользователя
+    try {
+      const result = updateUser.run({
+        $last_interaction: timestamp,
+        $chat_id: chatId,
+        $user_name: author
+      });
+      if (result.changes === 0) {
+        insertUser.run({
+          $chat_id: chatId,
+          $user_name: author,
+          $last_interaction: timestamp
+        });
+      }
+    } catch (error) {
+      // Игнорируем ошибки дубликатов
+    }
+    
+    importedCount++;
+    
+    if (importedCount % 1000 === 0) {
+      console.log(`📈 Импортировано ${importedCount} сообщений...`);
+    }
+    
+  } catch (error) {
+    skippedCount++;
+    if (skippedCount < 10) {
+      console.warn(`⚠️ Пропускаем сообщение ${msg.id}:`, error.message);
+    }
+  }
+}
+
+db.run('COMMIT');
+
+console.log(`✅ Импорт завершен!`);
+console.log(`📊 Импортировано: ${importedCount} сообщений`);
+console.log(`⏭️ Пропущено: ${skippedCount} сообщений`);
+
+// Показываем статистику
+const totalMessages = db.prepare('SELECT COUNT(*) as count FROM messages WHERE chat_id = $chat_id').get({ $chat_id: chatId });
+const totalTopics = db.prepare('SELECT COUNT(*) as count FROM chat_topics WHERE chat_id = $chat_id').get({ $chat_id: chatId });
+const totalUsers = db.prepare('SELECT COUNT(*) as count FROM user_relationships WHERE chat_id = $chat_id').get({ $chat_id: chatId });
+
+console.log(`\n📈 Итоговая статистика базы данных:`);
+console.log(`💬 Всего сообщений: ${totalMessages.count}`);
+console.log(`🏷️ Всего тем: ${totalTopics.count}`);
+console.log(`👥 Всего пользователей: ${totalUsers.count}`);
+
+db.close();
+console.log('🎉 Готово! Гейсандр теперь помнит всю историю чата!');

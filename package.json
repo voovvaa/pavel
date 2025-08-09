@@ -10,17 +10,24 @@
     "build": "bun build src/index.ts --outdir dist --target node",
     "prod": "bun run dist/index.js",
     "type-check": "tsc --noEmit",
-    "analyze": "bun run src/analyzer.ts",
-    "generate-mock": "bun run src/mock-generator.ts",
-    "patterns": "bun run src/pattern-extractor.ts",
-    "test-ai": "bun run src/ai-tester.ts"
+    "analyze": "bun run src/analysis/analyzer.ts",
+    "generate-mock": "bun run src/utils/mock-generator.ts",
+    "patterns": "bun run src/analysis/pattern-extractor.ts",
+    "test-ai": "bun run src/ai/ai-tester.ts",
+    "memory-stats": "bun run src/memory/memory-viewer.ts",
+    "import-history": "bun run src/utils/import-history.js",
+    "analyze-profiles": "bun run src/analysis/profile-tester.ts",
+    "test-adaptive": "bun run src/ai/adaptive-tester.ts",
+    "compare-models": "bun run src/ai/model-comparison-tester.ts",
+    "test-speed": "bun run src/ai/speed-comparison-tester.ts"
   },
   "keywords": ["telegram", "bot", "ai", "personality"],
   "author": "Your Name",
   "license": "MIT",
   "dependencies": {
+    "@inquirer/select": "^4.3.1",
     "node-telegram-bot-api": "^0.64.0",
-    "openai": "^4.52.7"
+    "openai": "^5.12.1"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

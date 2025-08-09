@@ -1,5 +1,5 @@
 import { promises as fs } from 'fs';
-import { TelegramExport, TelegramExportMessage } from './types.js';
+import { TelegramExport, TelegramExportMessage } from '../core/types.js';
 
 interface MockUser {
   name: string;

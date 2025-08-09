@@ -1,7 +1,7 @@
-import { ChatAnalytics, UserStats } from './types.js';
-import { Logger } from './logger.js';
+import { ChatAnalytics, UserStats } from '../core/types.js';
+import { Logger } from '../utils/logger.js';
 import { TelegramParser } from './parser.js';
-import { TelegramExport } from './types.js';
+import { TelegramExport } from '../core/types.js';
 
 export class ConsoleVisualizer {
   static displayAnalytics(analytics: ChatAnalytics, exportData?: TelegramExport): void {

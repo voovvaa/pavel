@@ -1,6 +1,6 @@
 import { promises as fs } from 'fs';
-import { TelegramExport, TelegramExportMessage, TextEntity } from './types.js';
-import { Logger } from './logger.js';
+import { TelegramExport, TelegramExportMessage, TextEntity } from '../core/types.js';
+import { Logger } from '../utils/logger.js';
 
 export class TelegramParser {
   /**

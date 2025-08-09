@@ -1,13 +1,18 @@
-import { TelegramParser } from './parser.js';
-import { ChatAnalyzer } from './analytics.js';
-import { PatternExtractor } from './pattern-extractor.js';
+import { TelegramParser } from '../analysis/parser.js';
+import { ChatAnalyzer } from '../analysis/analytics.js';
+import { PatternExtractor } from '../analysis/pattern-extractor.js';
 import { AIEngine } from './ai-engine.js';
-import { Logger } from './logger.js';
+import { Logger } from '../utils/logger.js';
 import { promises as fs } from 'fs';
-import { validateConfig } from './config.js';
+import { validateConfig } from '../core/config.js';
+import { ModelSelector } from './model-selector.js';
 
 async function main() {
   try {
+    // Сначала выбираем модель если не настроена
+    const modelSelector = new ModelSelector();
+    await modelSelector.ensureModelConfigured();
+    
     validateConfig();
     
     const personalityPath = process.argv[2] || './personality.json';
@@ -60,7 +65,7 @@ async function main() {
         console.log(`🎭 Гейсандр: ${response}`);
         
         // Обновляем контекст для следующего сообщения
-        context.recentMessages.push(
+        (context.recentMessages as Array<{text: string; author: string; timestamp: Date}>).push(
           { text: message, author: 'Тестер', timestamp: new Date() },
           { text: response, author: 'Гейсандр Кулович', timestamp: new Date() }
         );
@@ -86,7 +91,7 @@ async function main() {
         console.log(`\uD83C\uDFAD Гейсандр: ${response}`);
         
         // Обновляем контекст для следующего сообщения
-        context.recentMessages.push(
+        (context.recentMessages as Array<{text: string; author: string; timestamp: Date}>).push(
           { text: message, author: 'Тестер', timestamp: new Date() },
           { text: response, author: 'Гейсандр Кулович', timestamp: new Date() }
         );
@@ -108,6 +113,7 @@ async function main() {
   }
 }
 
-if (import.meta.main) {
+// Запуск если файл вызван напрямую
+if (import.meta.url === `file://${process.argv[1]}`) {
   main();
 }

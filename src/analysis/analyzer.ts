@@ -1,7 +1,7 @@
 import { TelegramParser } from './parser.js';
 import { ChatAnalyzer } from './analytics.js';
 import { ConsoleVisualizer } from './visualizer.js';
-import { Logger } from './logger.js';
+import { Logger } from '../utils/logger.js';
 import { promises as fs } from 'fs';
 
 async function main() {

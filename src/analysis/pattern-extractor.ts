@@ -1,6 +1,6 @@
 import { TelegramParser } from './parser.js';
 import { ChatAnalyzer } from './analytics.js';
-import { Logger } from './logger.js';
+import { Logger } from '../utils/logger.js';
 import { promises as fs } from 'fs';
 import { 
   TelegramExport, 
@@ -9,7 +9,7 @@ import {
   ResponsePattern,
   TriggerPattern,
   BotPersonality 
-} from './types.js';
+} from '../core/types.js';
 
 export class PatternExtractor {
   private export: TelegramExport;
