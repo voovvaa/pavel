@@ -19,7 +19,7 @@ export const config: Config = {
   allowedChatId: process.env.ALLOWED_CHAT_ID,
   devMode: process.env.DEV_MODE === 'true',
   openaiApiKey: process.env.OPENAI_API_KEY || '',
-  openaiModel: process.env.OPENAI_MODEL || '', // Пустое значение - будет выбираться интерактивно
+  openaiModel: process.env.OPENAI_MODEL || 'gpt-5-nano', // Дефолтная модель
   aiMode: (process.env.AI_MODE as any) || 'hybrid',
   aiProbability: parseFloat(process.env.AI_PROBABILITY || '0.8'),
   // Настройки памяти

@@ -4,6 +4,7 @@ import { Logger } from '../utils/logger.js';
 import { ResponseEngine } from '../ai/response-engine.js';
 import { ImageAnalyzer, ImageContext } from '../ai/image-analyzer.js';
 import { BotPersonality } from './types.js';
+import { HealthMonitor, HealthStatus } from './health-monitor.js';
 import { promises as fs } from 'fs';
 import { join } from 'path';
 
@@ -14,6 +15,8 @@ export class DigitalPersonalityBot {
   private imageAnalyzer: ImageAnalyzer | null = null;
   private chatId: string | null = null;
   private processingImages: Set<string> = new Set(); // Защита от множественной обработки
+  private healthMonitor: HealthMonitor | null = null;
+  private lastHealthCheck: Date | null = null;
 
   constructor() {
     this.bot = new TelegramBot(config.telegramBotToken, { polling: true });
@@ -539,6 +542,11 @@ export class DigitalPersonalityBot {
         this.responseEngine.close();
       }
       
+      // Закрываем health monitor
+      if (this.healthMonitor) {
+        this.healthMonitor.close();
+      }
+      
       await this.bot.stopPolling();
       this.isRunning = false;
       Logger.info('Гейсандр Кулович заснул и сохранил воспоминания');
@@ -597,6 +605,21 @@ export class DigitalPersonalityBot {
       
       this.isRunning = true;
       
+      // Инициализируем health monitor
+      this.healthMonitor = new HealthMonitor(this.chatId || undefined);
+      
+      // Проводим начальную проверку здоровья
+      try {
+        const healthStatus = await this.healthMonitor.getHealthStatus();
+        Logger.info(`🥰 Проверка здоровья: ${healthStatus.status.toUpperCase()}`);
+        if (healthStatus.status !== 'healthy') {
+          Logger.warn('⚠️ Обнаружены проблемы - запустите: bun run health-check');
+        }
+        this.lastHealthCheck = new Date();
+      } catch (error) {
+        Logger.warn('Ошибка при проверке здоровья:', error);
+      }
+      
       if (this.responseEngine) {
         Logger.info('🧠 Гейсандр Кулович вспомнил свой характер и готов к общению!');
         Logger.info(`🤖 AI режим: ${config.aiMode} (вероятность: ${(config.aiProbability * 100).toFixed(0)}%)`);
@@ -619,6 +642,50 @@ export class DigitalPersonalityBot {
 
   public getContextStats() {
     return this.responseEngine?.getContextStats() || null;
+  }
+
+  /**
+   * Получает статус здоровья системы
+   */
+  public async getHealthStatus(): Promise<HealthStatus | null> {
+    if (!this.healthMonitor) {
+      return null;
+    }
+    
+    try {
+      const status = await this.healthMonitor.getHealthStatus();
+      this.lastHealthCheck = new Date();
+      return status;
+    } catch (error) {
+      Logger.error('Ошибка при получении статуса здоровья:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Быстрая проверка здоровья
+   */
+  public async quickHealthCheck(): Promise<{ status: string; message: string } | null> {
+    if (!this.healthMonitor) {
+      return null;
+    }
+    
+    try {
+      return await this.healthMonitor.quickHealthCheck();
+    } catch (error) {
+      Logger.error('Ошибка при быстрой проверке:', error);
+      return { status: 'error', message: 'Ошибка проверки' };
+    }
+  }
+
+  /**
+   * Проверяет нужно ли обновить статус здоровья (каждые 30 минут)
+   */
+  private shouldUpdateHealthStatus(): boolean {
+    if (!this.lastHealthCheck) return true;
+    
+    const thirtyMinutes = 30 * 60 * 1000;
+    return (Date.now() - this.lastHealthCheck.getTime()) > thirtyMinutes;
   }
 
   /**

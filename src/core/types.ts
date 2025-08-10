@@ -193,6 +193,8 @@ export interface MemoryEntry {
   // Новые поля для изображений
   imageAnalysis?: ImageAnalysisResult;
   filePath?: string; // Путь к сохраненному файлу изображения
+  // ЭТАП 8: Расширенный эмоциональный анализ
+  emotionAnalysis?: import('../ai/emotion-analyzer.js').EmotionAnalysis;
 }
 
 export interface ConversationSummary {
@@ -218,6 +220,8 @@ export interface UserRelationship {
   commonTopics: string[];
   personalNotes: string[];
   mood: 'positive' | 'negative' | 'neutral';
+  // ЭТАП 8: Эмоциональный профиль
+  emotionalProfile?: import('../ai/emotion-analyzer.js').EmotionalProfile;
 }
 
 export interface ChatTopic {
@@ -239,6 +243,10 @@ export interface MemoryContext {
   userRelationships: Map<string, UserRelationship>;
   activeTopics: ChatTopic[];
   currentMood: string;
+  // ЭТАП 8: Групповое эмоциональное состояние
+  groupEmotionalState?: import('../ai/emotion-analyzer.js').GroupEmotionalState;
+  // ЭТАП 9: Важные события чата
+  relevantEvents?: import('../core/event-tracker.js').ChatEvent[];
 }
 
 // Обновляем ChatContext для интеграции с памятью
@@ -255,6 +263,9 @@ export interface ChatContext {
   // Новые поля для памяти
   memoryContext?: MemoryContext;
   conversationId?: string;
+  // ЭТАП 9: Контекстная адаптация поведения
+  responseStyle?: 'casual' | 'supportive' | 'humorous' | 'technical' | 'careful';
+  situationType?: 'normal' | 'conflict' | 'celebration' | 'group_discussion' | 'private_moment' | 'technical_discussion';
 }
 
 export interface BotPersonality {

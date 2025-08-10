@@ -2,12 +2,19 @@ import {
   BotPersonality, 
   TriggerPattern, 
   ChatContext,
-  ImageAnalysisResult
+  ImageAnalysisResult,
+  MemoryContext
 } from '../core/types.js';
 import { Logger } from '../utils/logger.js';
 import { AIEngine } from './ai-engine.js';
 import { MemoryManager } from '../memory/memory-manager.js';
 import { config } from '../core/config.js';
+// ЭТАП 8: Эмоциональная адаптация
+import { EmotionalAdapter, EmotionalAdaptation } from './emotional-adapter.js';
+// ЭТАП 9: Динамическая активность
+import { ActivityManager } from '../core/activity-manager.js';
+// Константы производительности
+import { MEMORY_LIMITS, TIMEOUTS, IMPORTANCE_THRESHOLDS, CONTENT_LIMITS } from '../constants/performance.js';
 
 export class ResponseEngine {
   private personality: BotPersonality;
@@ -15,11 +22,23 @@ export class ResponseEngine {
   private aiEngine: AIEngine;
   private memoryManager: MemoryManager | null = null;
   private chatId: string | null = null;
+  // ЭТАП 8: Эмоциональный адаптер
+  private emotionalAdapter: EmotionalAdapter;
+  // ЭТАП 9: Менеджер активности
+  private activityManager: ActivityManager | null = null;
 
   constructor(personality: BotPersonality, chatId?: string) {
     this.personality = personality;
     this.chatId = chatId || null;
     this.aiEngine = new AIEngine(personality, this.chatId || undefined);
+    
+    // ЭТАП 8: Инициализируем эмоциональный адаптер
+    this.emotionalAdapter = new EmotionalAdapter();
+    
+    // ЭТАП 9: Инициализируем менеджер активности
+    if (chatId) {
+      this.activityManager = new ActivityManager(chatId);
+    }
     
     // Инициализируем память только если есть chatId
     if (chatId) {
@@ -47,42 +66,111 @@ export class ResponseEngine {
   }
 
   /**
+   * ЭТАП 9: Анализирует контекстную ситуацию для оптимизации поведения
+   */
+  private analyzeContextualSituation(messageText: string, author: string): {
+    situationType: 'normal' | 'conflict' | 'celebration' | 'group_discussion' | 'private_moment' | 'technical_discussion';
+    behaviorModifier: number;
+    responseStyle: 'casual' | 'supportive' | 'humorous' | 'technical' | 'careful';
+  } {
+    const lowerText = messageText.toLowerCase();
+    const recentMessages = this.context.recentMessages;
+    
+    // Определяем тип ситуации
+    let situationType: 'normal' | 'conflict' | 'celebration' | 'group_discussion' | 'private_moment' | 'technical_discussion' = 'normal';
+    let behaviorModifier = 1.0;
+    let responseStyle: 'casual' | 'supportive' | 'humorous' | 'technical' | 'careful' = 'casual';
+    
+    // Проверка на конфликт
+    const conflictWords = ['спор', 'конфликт', 'не согласен', 'ерунда', 'глупость', 'идиот', 'дурак'];
+    if (conflictWords.some(word => lowerText.includes(word))) {
+      situationType = 'conflict';
+      behaviorModifier = 0.3; // Очень аккуратно в конфликтах
+      responseStyle = 'careful';
+    }
+    
+    // Проверка на празднование
+    const celebrationWords = ['поздравляю', 'день рождения', 'праздник', 'ура', '🎉', '🎂', 'молодец'];
+    if (celebrationWords.some(word => lowerText.includes(word))) {
+      situationType = 'celebration';
+      behaviorModifier = 1.5; // Более активно в празднованиях
+      responseStyle = 'supportive';
+    }
+    
+    // Проверка на групповую дискуссию (много участников недавно)
+    const uniqueRecentAuthors = new Set(recentMessages.slice(-5).map(msg => msg.author));
+    if (uniqueRecentAuthors.size >= 3 && this.context.messagesSinceLastResponse > 2) {
+      situationType = 'group_discussion';
+      behaviorModifier = 0.7; // Менее активно в групповых дискуссиях
+      responseStyle = 'casual';
+    }
+    
+    // Проверка на техническое обсуждение
+    const techWords = ['код', 'программ', 'алгоритм', 'бот', 'api', 'база данных', 'сервер', 'github'];
+    if (techWords.some(word => lowerText.includes(word))) {
+      situationType = 'technical_discussion';
+      behaviorModifier = 1.2; // Чуть активнее в технических темах
+      responseStyle = 'technical';
+    }
+    
+    // Проверка на личный момент
+    const personalWords = ['переживаю', 'проблема', 'грустно', 'устал', 'болею', 'расстроен'];
+    if (personalWords.some(word => lowerText.includes(word))) {
+      situationType = 'private_moment';
+      behaviorModifier = 1.8; // Очень активно в личных моментах
+      responseStyle = 'supportive';
+    }
+    
+    return { situationType, behaviorModifier, responseStyle };
+  }
+
+  /**
    * Определяет нужно ли отвечать на сообщение
    */
   shouldRespond(messageText: string, author: string): boolean {
     // НЕ отвечаем на свои сообщения и если нас называют "ботом"
     if (author === 'Гейсандр Кулович' || author === 'bot') return false;
     
-    // СТРОГО игнорируем если нас называют ботом
+    // Игнорируем если нас называют ботом
     const lowerText = messageText.toLowerCase();
     if (lowerText.includes('бот') || lowerText.includes('bot')) {
-      Logger.debug('Игнорируем сообщение с упоминанием "бот" - Гейсандр не бот!');
       return false;
     }
 
     this.context.messagesSinceLastResponse++;
 
+    // ЭТАП 9: Анализируем контекстную ситуацию
+    const situationAnalysis = this.analyzeContextualSituation(messageText, author);
+    
     // Проверяем прямое обращение к Гейсандру Куловичу
     if (this.isDirectMention(messageText)) {
-      Logger.debug('Прямое обращение к Гейсандру Куловичу');
       return true;
     }
 
-    // Проверяем активность по расписанию
-    const now = new Date();
-    const currentHour = now.getHours();
-    const currentDay = now.getDay();
+    // ЭТАП 9: Проверяем динамическую активность
+    const activityModifiers = this.activityManager?.getActivityModifiers();
     
-    if (!this.personality.schedule.activeHours.includes(currentHour) ||
-        !this.personality.schedule.activeDays.includes(currentDay)) {
-      Logger.debug('Гейсандр Кулович неактивен по расписанию');
-      return false;
+    if (activityModifiers) {
+      // Используем динамическую оценку активности
+      if (!activityModifiers.isActiveTime && Math.random() > 0.3) {
+        return false;
+      }
+    } else {
+      // Fallback на статическое расписание
+      const now = new Date();
+      const currentHour = now.getHours();
+      const currentDay = now.getDay();
+      
+      if (!this.personality.schedule.activeHours.includes(currentHour) ||
+          !this.personality.schedule.activeDays.includes(currentDay)) {
+        return false;
+      }
     }
 
     // В AI режиме более гибкая логика ответов
     if (this.aiEngine.isAvailable()) {
       const randomChance = Math.random();
-      const shouldRespondChance = this.personality.responseStyle.activityLevel * 0.4;
+      let shouldRespondChance = this.personality.responseStyle.activityLevel * 0.4;
       
       // Проверяем не слишком ли часто отвечаем
       if (this.context.lastBotResponse) {
@@ -90,19 +178,51 @@ export class ResponseEngine {
         const minDelay = (1 - this.personality.responseStyle.activityLevel) * 180000;
         
         if (timeSinceLastResponse < minDelay && this.context.messagesSinceLastResponse < 2) {
-          Logger.debug('Гейсандру Куловичу еще рано отвечать');
           return false;
         }
       }
       
-      Logger.debug(`Гейсандр Кулович (AI с памятью): шанс ответа ${shouldRespondChance}, случайное: ${randomChance}`);
+      // ЭТАП 8: Эмоциональная адаптация вероятности ответа
+      if (this.context.memoryContext) {
+        try {
+          const adaptation = this.emotionalAdapter.adaptToEmotionalState(
+            author,
+            messageText,
+            this.context.memoryContext
+          );
+          shouldRespondChance *= adaptation.responseModifier;
+          Logger.debug(`🎭 Эмоциональная модификация вероятности: ${adaptation.responseModifier.toFixed(2)}x`);
+        } catch (error) {
+          Logger.warn('Ошибка при эмоциональной адаптации:', error);
+        }
+      }
+      
+      // ЭТАП 9: Адаптация под динамическую активность
+      if (activityModifiers) {
+        shouldRespondChance *= activityModifiers.responseMultiplier;
+        
+        // Дополнительная логика на основе неактивности чата
+        if (activityModifiers.inactivityPeriod > 60) { // Более часа тишины
+          shouldRespondChance *= 1.5; // Больше шансов "оживить" чат
+        } else if (activityModifiers.inactivityPeriod < 5) { // Активный разговор
+          shouldRespondChance *= 0.7; // Меньше шансов мешать
+        }
+        
+        const stats = this.activityManager?.getActivityStats() || '';
+        Logger.debug(`📊 Динамическая активность: ${activityModifiers.responseMultiplier.toFixed(2)}x (${stats})`);
+      }
+
+      // ЭТАП 9: Адаптация под контекстную ситуацию
+      shouldRespondChance *= situationAnalysis.behaviorModifier;
+      Logger.debug(`🎯 Контекстная ситуация: ${situationAnalysis.situationType} (модификатор: ${situationAnalysis.behaviorModifier.toFixed(2)}x, стиль: ${situationAnalysis.responseStyle})`);
+      
+      Logger.debug(`Гейсандр Кулович (AI с памятью): шанс ответа ${shouldRespondChance.toFixed(3)}, случайное: ${randomChance.toFixed(3)}`);
       return randomChance < shouldRespondChance;
     }
 
     // Классическая логика для паттернов
     const matchingPattern = this.findMatchingPattern(messageText);
     if (!matchingPattern) {
-      Logger.debug('Гейсандр Кулович не нашел подходящий паттерн');
       return false;
     }
 
@@ -111,7 +231,6 @@ export class ResponseEngine {
       const minDelay = (1 - this.personality.responseStyle.activityLevel) * 300000;
       
       if (timeSinceLastResponse < minDelay && this.context.messagesSinceLastResponse < 3) {
-        Logger.debug('Гейсандру Куловичу еще рано отвечать');
         return false;
       }
     }
@@ -119,7 +238,6 @@ export class ResponseEngine {
     const randomChance = Math.random();
     const shouldRespondChance = this.personality.responseStyle.activityLevel * 0.3;
     
-    Logger.debug(`Гейсандр Кулович (паттерны): шанс ответа ${shouldRespondChance}, случайное: ${randomChance}`);
     return randomChance < shouldRespondChance;
   }
 
@@ -127,24 +245,30 @@ export class ResponseEngine {
    * Генерирует ответ используя AI или паттерны с памятью
    */
   async generateResponse(messageText: string, author: string, messageId?: number): Promise<string | null> {
+    // ЭТАП 9: Анализируем контекстную ситуацию для стиля ответа
+    const situationAnalysis = this.analyzeContextualSituation(messageText, author);
     // Если есть память, строим контекст
     if (this.memoryManager) {
       try {
-        Logger.debug(`💾 [ОТВЕТ] Начинаем построение контекста памяти...`);
         const memoryContext = await this.memoryManager.buildMemoryContext(messageText, author);
         this.context.memoryContext = memoryContext;
-        Logger.info(`✅ [ОТВЕТ] Контекст памяти построен и передан в context`);
+        Logger.memory(`Контекст памяти построен для ${author}`);
       } catch (error) {
-        Logger.error('❌ [ОТВЕТ] Ошибка при построении контекста памяти:', error);
+        Logger.error('Ошибка при построении контекста памяти:', error);
       }
     } else {
-      Logger.warn(`⚠️ [ОТВЕТ] memoryManager отсутствует! Ответ будет без памяти.`);
+      Logger.warn('MemoryManager отсутствует - ответ без памяти');
     }
     const useAI = this.shouldUseAI(messageText);
     
     if (useAI && this.aiEngine.isAvailable()) {
-      Logger.debug('Пытаемся генерировать ответ через AI с памятью...');
-      const aiResponse = await this.aiEngine.generateResponse(messageText, author, this.context);
+      // Добавляем стиль ответа в контекст
+      const contextWithStyle = { 
+        ...this.context, 
+        responseStyle: situationAnalysis.responseStyle,
+        situationType: situationAnalysis.situationType
+      };
+      const aiResponse = await this.aiEngine.generateResponse(messageText, author, contextWithStyle);
       
       if (aiResponse) {
         this.updateContext('Гейсандр Кулович', aiResponse, messageId);
@@ -155,7 +279,6 @@ export class ResponseEngine {
     }
 
     // Fallback на паттерны
-    Logger.debug('Генерируем ответ через паттерны...');
     const patternResponse = this.generatePatternResponse(messageText);
     
     if (patternResponse) {
@@ -220,9 +343,9 @@ export class ResponseEngine {
       timestamp: new Date()
     });
 
-    // Оставляем только последние 10 сообщений
-    if (this.context.recentMessages.length > 10) {
-      this.context.recentMessages = this.context.recentMessages.slice(-10);
+    // Оставляем только последние сообщения
+    if (this.context.recentMessages.length > CONTENT_LIMITS.RECENT_MESSAGES * 2) {
+      this.context.recentMessages = this.context.recentMessages.slice(-CONTENT_LIMITS.RECENT_MESSAGES * 2);
     }
 
     this.context.activeUsers.add(author);
@@ -233,13 +356,21 @@ export class ResponseEngine {
     }
 
     // Сохраняем в память если доступно
-    Logger.debug(`Попытка сохранить в память: memoryManager=${!!this.memoryManager}, messageId=${messageId}, chatId=${this.chatId}`);
     
     if (this.memoryManager && messageId && this.chatId) {
       try {
         const importance = this.calculateMessageImportance(messageText, author);
         const emotion = this.detectEmotion(messageText);
-        const topics = this.extractTopics(messageText);
+        
+        // ЭТАП 9: Умное извлечение тем - ТОЛЬКО для пользователей, НЕ для бота
+        let topics: string[] = [];
+        if (author !== 'Гейсандр Кулович') {
+          topics = this.extractTopics(messageText, {
+            emotion,
+            imageAnalysis,
+            memoryContext: this.context.memoryContext
+          });
+        }
         
         // Сохраняем в базу данных активные темы (только значимые)
         const importantTopics = topics.filter(topic => 
@@ -263,11 +394,12 @@ export class ResponseEngine {
           importantTopics.push(...imageAnalysis.tags);
         }
         
-        importantTopics.forEach(topic => {
-          this.updateTopicInDatabase(topic, author);
-        });
-        
-        Logger.debug(`Сохраняем сообщение: важность=${importance}, эмоция=${emotion}, темы=${JSON.stringify(topics)}, тип=${messageType}`);
+        // Обновляем темы в БД только для пользователей (не для бота)
+        if (author !== 'Гейсандр Кулович') {
+          importantTopics.forEach(topic => {
+            this.updateTopicInDatabase(topic, author);
+          });
+        }
         
         this.memoryManager.saveMessage({
           chatId: this.chatId,
@@ -284,7 +416,7 @@ export class ResponseEngine {
           imageAnalysis: imageAnalysis
         });
 
-        // Обновляем отношения с пользователем
+        // Обновляем отношения с пользователем (только для пользователей, не для бота)
         if (author !== 'Гейсандр Кулович') {
           this.memoryManager.updateUserRelationship(author, {
             commonTopics: topics,
@@ -293,12 +425,12 @@ export class ResponseEngine {
           });
         }
 
-        Logger.info(`✅ Сообщение сохранено в память: "${messageText.substring(0, 30)}..." от ${author}`);
+        Logger.memory(`Сообщение сохранено: "${messageText.substring(0, 30)}..." от ${author}`);
       } catch (error) {
         Logger.error('❌ Ошибка сохранения в память:', error);
       }
     } else {
-      Logger.warn(`⚠️ Не сохраняем в память: memoryManager=${!!this.memoryManager}, messageId=${messageId}, chatId=${this.chatId}`);
+      Logger.warn(`Не сохраняем в память: memoryManager=${!!this.memoryManager}, messageId=${messageId}`);
     }
 
     // Очищаем неактивных пользователей
@@ -316,7 +448,7 @@ export class ResponseEngine {
 
     // Прямые обращения важнее
     if (this.isDirectMention(text)) {
-      importance += 0.3;
+      importance += IMPORTANCE_THRESHOLDS.MEDIUM_IMPORTANCE;
     }
 
     // Длинные сообщения важнее
@@ -330,7 +462,7 @@ export class ResponseEngine {
     }
 
     // Ограничиваем диапазон 0-1
-    return Math.min(1.0, Math.max(0.1, importance));
+    return Math.min(1.0, Math.max(IMPORTANCE_THRESHOLDS.LOW_IMPORTANCE, importance));
   }
 
   /**
@@ -388,24 +520,259 @@ export class ResponseEngine {
   }
 
   /**
-   * Извлекает темы из сообщения
+   * ЭТАП 9: Умное извлечение тем с использованием всех аналитических систем
    */
-  private extractTopics(text: string): string[] {
+  private extractTopics(text: string, context?: {
+    emotion?: string;
+    imageAnalysis?: ImageAnalysisResult;
+    memoryContext?: MemoryContext;
+    detectedEvent?: any;
+  }): string[] {
+    const topics: string[] = [];
+    
+    // 1. ПРИОРИТЕТ: Темы из анализа изображений
+    if (context?.imageAnalysis?.tags && context.imageAnalysis.tags.length > 0) {
+      // Берем самые релевантные теги из анализа изображений
+      const imageTags = context.imageAnalysis.tags
+        .filter(tag => tag.length >= CONTENT_LIMITS.MIN_ENTITY_LENGTH && !['photo', 'image', 'picture'].includes(tag.toLowerCase()))
+        .slice(0, CONTENT_LIMITS.MAX_ENTITIES_PER_MESSAGE);
+      topics.push(...imageTags);
+    }
+    
+    // 2. Темы из обнаруженных событий
+    if (context?.detectedEvent?.tags) {
+      const eventTopics = context.detectedEvent.tags
+        .filter((tag: string) => !['celebration', 'conflict', 'funny_moment', 'decision', 'revelation'].includes(tag)) // исключаем типы событий
+        .slice(0, 1);
+      topics.push(...eventTopics);
+    }
+    
+    // 3. Связь с активными темами чата
+    if (context?.memoryContext?.activeTopics && context.memoryContext.activeTopics.length > 0) {
+      const lowerText = text.toLowerCase();
+      const relatedTopics = context.memoryContext.activeTopics
+        .filter((topicObj: any) => {
+          const topic = topicObj.topic.toLowerCase();
+          return lowerText.includes(topic) || topic.includes(lowerText.substring(0, 10));
+        })
+        .map((topicObj: any) => topicObj.topic)
+        .slice(0, 1);
+      
+      if (relatedTopics.length > 0) {
+        topics.push(...relatedTopics);
+      }
+    }
+    
+    // 4. Распознавание сущностей в тексте (животные, предметы, места)
+    const entities = this.extractEntities(text);
+    if (entities.length > 0) {
+      topics.push(...entities.slice(0, CONTENT_LIMITS.MAX_ENTITIES_PER_MESSAGE));
+    }
+
+    // 5. Эмоционально значимые темы
+    if (context?.emotion && ['excited', 'angry', 'sad', 'funny'].includes(context.emotion)) {
+      // Для эмоциональных сообщений пытаемся найти ключевые слова более тщательно
+      const emotionalKeywords = this.extractEmotionalKeywords(text, context.emotion);
+      topics.push(...emotionalKeywords.slice(0, 1));
+    }
+    
+    // 6. Fallback: умный текстовый анализ (только если мало тем)
+    if (topics.length < 2) {
+      const textTopics = this.extractTopicsFromText(text);
+      topics.push(...textTopics.slice(0, 2 - topics.length));
+    }
+    
+    // Убираем дубли и возвращаем максимум тем
+    const uniqueTopics = [...new Set(topics)].slice(0, CONTENT_LIMITS.MAX_TOPICS_PER_MESSAGE);
+    
+    return uniqueTopics;
+  }
+
+  /**
+   * Распознает сущности в тексте (животные, предметы, места, люди)
+   */
+  private extractEntities(text: string): string[] {
+    const lowerText = text.toLowerCase();
+    const entities: string[] = [];
+    
+    // Словари сущностей
+    const entityDictionaries = {
+      animals: [
+        'кот', 'кота', 'коте', 'коту', 'котом', 'кошка', 'кошку', 'кошке', 'кошки',
+        'собака', 'собаку', 'собаке', 'собаки', 'собакой', 'пес', 'пса', 'псу', 'псом',
+        'утка', 'утку', 'утке', 'утки', 'уткой', 'уток', 
+        'птица', 'птицу', 'птице', 'птицы', 'птицей', 'птиц',
+        'рыба', 'рыбу', 'рыбе', 'рыбы', 'рыбой', 'рыб',
+        'ящерица', 'ящерицу', 'ящерице', 'ящерицы', 'ящерицей', 'ящериц',
+        'хомяк', 'хомяка', 'хомяке', 'хомяку', 'хомяком', 'хомяки',
+        'морской свинка', 'свинка', 'свинку', 'свинке', 'свинки', 'свинкой'
+      ],
+      
+      plants: [
+        'цветок', 'цветка', 'цветке', 'цветку', 'цветком', 'цветы', 'цветов',
+        'растение', 'растения', 'растению', 'растением', 'растений',
+        'мухоловка', 'мухоловку', 'мухоловке', 'мухоловки', 'мухоловкой',
+        'кактус', 'кактуса', 'кактусе', 'кактусу', 'кактусом', 'кактусы'
+      ],
+      
+      tech: [
+        'телевизор', 'телевизора', 'телевизоре', 'телевизору', 'телевизором', 'телик', 'телика', 'телику',
+        'компьютер', 'компьютера', 'компьютере', 'компьютеру', 'компьютером', 'комп', 'компа', 'компу',
+        'телефон', 'телефона', 'телефоне', 'телефону', 'телефоном', 'мобильный', 'смартфон',
+        'ноутбук', 'ноутбука', 'ноутбуке', 'ноутбуку', 'ноутбуком', 'лаптоп'
+      ],
+      
+      places: [
+        'египет', 'египта', 'египте', 'египту', 'египтом',
+        'питер', 'питера', 'питере', 'питеру', 'питером', 'петербург',
+        'москва', 'москвы', 'москве', 'москву', 'москвой',
+        'украина', 'украины', 'украине', 'украину', 'украиной',
+        'дом', 'дома', 'доме', 'дому', 'домом', 'квартира', 'квартиры', 'квартире'
+      ],
+      
+      objects: [
+        'кровать', 'кровати', 'кровате', 'кроватью', 'кроватей',
+        'стол', 'стола', 'столе', 'столу', 'столом', 'столы',
+        'машина', 'машины', 'машине', 'машину', 'машиной', 'авто', 'тачка', 'тачку', 'тачке',
+        'картинг', 'картинга', 'картинге', 'картингу', 'картингом'
+      ]
+    };
+    
+    // Ищем совпадения по всем словарям
+    for (const [category, words] of Object.entries(entityDictionaries)) {
+      for (const word of words) {
+        if (lowerText.includes(word)) {
+          // Нормализуем к базовой форме
+          const baseForm = this.normalizeEntityToBaseForm(word, category);
+          if (baseForm && !entities.includes(baseForm)) {
+            entities.push(baseForm);
+          }
+        }
+      }
+    }
+    
+    return entities.slice(0, 2); // Максимум 2 сущности
+  }
+
+  /**
+   * Приводит сущность к базовой форме
+   */
+  private normalizeEntityToBaseForm(word: string, category: string): string {
+    const normalizations: { [key: string]: { [key: string]: string } } = {
+      animals: {
+        'кот': 'кот', 'кота': 'кот', 'коте': 'кот', 'коту': 'кот', 'котом': 'кот',
+        'кошка': 'кот', 'кошку': 'кот', 'кошке': 'кот', 'кошки': 'кот',
+        'собака': 'собака', 'собаку': 'собака', 'собаке': 'собака', 'собаки': 'собака', 'собакой': 'собака',
+        'пес': 'собака', 'пса': 'собака', 'псу': 'собака', 'псом': 'собака',
+        'утка': 'утка', 'утку': 'утка', 'утке': 'утка', 'утки': 'утка', 'уткой': 'утка', 'уток': 'утка',
+        'птица': 'птица', 'птицу': 'птица', 'птице': 'птица', 'птицы': 'птица', 'птицей': 'птица', 'птиц': 'птица',
+        'ящерица': 'ящерица', 'ящерицу': 'ящерица', 'ящерице': 'ящерица', 'ящерицы': 'ящерица',
+        'хомяк': 'хомяк', 'хомяка': 'хомяк', 'хомяке': 'хомяк', 'хомяку': 'хомяк', 'хомяком': 'хомяк', 'хомяки': 'хомяк'
+      },
+      plants: {
+        'цветок': 'цветы', 'цветка': 'цветы', 'цветке': 'цветы', 'цветку': 'цветы', 'цветком': 'цветы', 'цветы': 'цветы', 'цветов': 'цветы',
+        'растение': 'растения', 'растения': 'растения', 'растению': 'растения', 'растением': 'растения', 'растений': 'растения',
+        'мухоловка': 'мухоловка', 'мухоловку': 'мухоловка', 'мухоловке': 'мухоловка', 'мухоловки': 'мухоловка'
+      },
+      tech: {
+        'телевизор': 'телевизор', 'телевизора': 'телевизор', 'телевизоре': 'телевизор', 'телевизору': 'телевизор', 'телевизором': 'телевизор',
+        'телик': 'телевизор', 'телика': 'телевизор', 'телику': 'телевизор',
+        'компьютер': 'компьютер', 'компьютера': 'компьютер', 'компьютере': 'компьютер',
+        'комп': 'компьютер', 'компа': 'компьютер', 'компу': 'компьютер'
+      },
+      places: {
+        'египет': 'Египет', 'египта': 'Египет', 'египте': 'Египет', 'египту': 'Египет', 'египтом': 'Египет',
+        'питер': 'Питер', 'питера': 'Питер', 'питере': 'Питер', 'петербург': 'Питер'
+      },
+      objects: {
+        'кровать': 'кровать', 'кровати': 'кровать', 'кровате': 'кровать',
+        'машина': 'машина', 'машины': 'машина', 'машине': 'машина', 'машину': 'машина',
+        'авто': 'машина', 'тачка': 'машина', 'тачку': 'машина', 'тачке': 'машина',
+        'картинг': 'картинг', 'картинга': 'картинг', 'картинге': 'картинг'
+      }
+    };
+    
+    return normalizations[category]?.[word] || word;
+  }
+
+  /**
+   * Извлекает эмоционально значимые ключевые слова
+   */
+  private extractEmotionalKeywords(text: string, emotion: string): string[] {
+    const lowerText = text.toLowerCase();
+    const keywords: string[] = [];
+    
+    // Словари для разных эмоций
+    const emotionalPatterns: { [key: string]: string[] } = {
+      'excited': ['крут', 'супер', 'офиг', 'збс', 'ахуен', 'пизд', 'топ', 'огонь'],
+      'funny': ['смех', 'ржак', 'прикол', 'умор', 'хохм', 'стеб', 'юмор'],
+      'angry': ['злой', 'бесит', 'раздража', 'задолб', 'дост', 'херн', 'говн'],
+      'sad': ['груст', 'печал', 'расстро', 'плох', 'тоск', 'жал']
+    };
+    
+    const patterns = emotionalPatterns[emotion] || [];
+    
+    // Ищем слова, которые содержат эмоциональные корни
+    const words = lowerText
+      .replace(/[^\w\sа-яё]/gi, ' ')
+      .split(/\s+/)
+      .filter(word => word.length >= 4);
+    
+    for (const word of words) {
+      for (const pattern of patterns) {
+        if (word.includes(pattern) && word.length >= 4) {
+          keywords.push(word);
+          break;
+        }
+      }
+    }
+    
+    return keywords.slice(0, 1);
+  }
+
+  /**
+   * Улучшенное извлечение тем из текста (fallback метод)
+   */
+  private extractTopicsFromText(text: string): string[] {
     const words = text.toLowerCase()
       .replace(/[^\w\sа-яё]/gi, ' ')
       .split(/\s+/)
       .filter(word => word.length >= 4);
     
-    // Фильтруем стоп-слова и имена для тем
+    // Расширенный список стоп-слов (включая прилагательные)
     const topicStopWords = new Set([
-      'саня', 'гейсандр', 'кулович', 'вроде', 'думаю', 'норм', 'ваще',
-      'богдан', 'онлайн', 'реально', 'только', 'говорил', 'помню',
-      'макс', 'ушел', 'была', 'были', 'есть', 'будет', 'может', 'очень'
+      // Имена и обращения
+      'саня', 'гейсандр', 'кулович', 'богдан', 'володя', 'вано', 'леня', 'максим',
+      
+      // Прилагательные и описательные слова
+      'какой', 'такой', 'важный', 'хороший', 'плохой', 'большой', 'маленький',
+      'красивый', 'умный', 'глупый', 'новый', 'старый', 'молодой',
+      
+      // Частые слова
+      'вроде', 'думаю', 'норм', 'ваще', 'онлайн', 'реально', 'только', 'говорил', 'помню',
+      'была', 'были', 'есть', 'будет', 'может', 'очень', 'тоже', 'тебя', 'меня', 'него',
+      'этот', 'этого', 'этому', 'этой', 'этих', 'того', 'тому', 'теми', 'them',
+      
+      // Вопросительные и связки
+      'который', 'которая', 'которое', 'которые', 'когда', 'почему', 'зачем', 'откуда',
+      'чего', 'чему', 'чем', 'что', 'где', 'как', 'или', 'тем', 'для'
     ]);
     
-    return words
-      .filter(word => !topicStopWords.has(word) && word.length >= 5)
-      .slice(0, 2); // Только самые важные темы
+    // Ищем потенциальные темы (существительные)
+    const potentialTopics = words.filter(word => {
+      // Исключаем стоп-слова
+      if (topicStopWords.has(word)) return false;
+      
+      // Минимальная длина
+      if (word.length < 5) return false;
+      
+      // Исключаем слова с повторяющимися символами (типа "ааааа")
+      if (/(.)\1{2,}/.test(word)) return false;
+      
+      return true;
+    });
+    
+    return potentialTopics.slice(0, 2);
   }
 
   /**
@@ -445,8 +812,6 @@ export class ResponseEngine {
             mention_count, related_users, importance, status
           ) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1, ?, 0.5, 'active')
         `).run(this.chatId, topic, JSON.stringify([author]));
-        
-        Logger.debug(`🎯 Новая тема создана: ${topic}`);
       }
     } catch (error) {
       Logger.error('Ошибка при обновлении темы:', error);
@@ -551,6 +916,9 @@ export class ResponseEngine {
   close(): void {
     if (this.memoryManager) {
       this.memoryManager.close();
+    }
+    if (this.activityManager) {
+      this.activityManager.close();
     }
   }
 }

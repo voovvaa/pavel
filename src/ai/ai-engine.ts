@@ -1,58 +1,57 @@
 import OpenAI from "openai";
 import { config } from "../core/config.js";
 import { Logger } from "../utils/logger.js";
-import { BotPersonality, ChatContext, MemoryContext } from "../core/types.js";
-import { UserProfiler, UserProfile } from "../analysis/user-profiler.js";
+import { BotPersonality, ChatContext } from "../core/types.js";
+import { cacheManager, SmartCache } from "../core/cache-manager.js";
+// ЭТАП 8: Эмоциональная адаптация
+import { EmotionalAdapter, EmotionalAdaptation } from "./emotional-adapter.js";
 
 export class AIEngine {
   private openai: OpenAI | null = null;
   private personality: BotPersonality;
   private isEnabled: boolean;
-  private profiler: UserProfiler | null = null;
+  // ЭТАП 8: Эмоциональный адаптер
+  private emotionalAdapter: EmotionalAdapter;
+  // Кэширование AI ответов
+  private responseCache: SmartCache<string>;
 
   constructor(personality: BotPersonality, chatId?: string) {
     this.personality = personality;
     this.isEnabled = config.aiMode !== "patterns_only" && !!config.openaiApiKey;
     
-    // Инициализируем профайлер если передан chatId
-    if (chatId) {
-      this.profiler = new UserProfiler(chatId);
-      Logger.info('👤 Профайлер пользователей активирован');
-    }
+    // ЭТАП 8: Инициализируем эмоциональный адаптер
+    this.emotionalAdapter = new EmotionalAdapter();
+    
+    // Инициализируем кэш для AI ответов
+    this.responseCache = cacheManager.getCache<string>('ai');
 
     if (this.isEnabled) {
       this.openai = new OpenAI({
         apiKey: config.openaiApiKey,
       });
-      Logger.info(`🤖 AI движок активирован (модель: ${config.openaiModel})`);
+      Logger.ai(`Движок активирован (модель: ${config.openaiModel}) с кэшированием`);
     } else {
       Logger.info("🔧 AI движок отключен - используются только паттерны");
     }
   }
 
   /**
-   * Упрощенный расчет токенов - только для non-reasoning моделей
+   * Упрощенный расчет токенов для продакшена
    */
   private calculateMaxTokens(): number {
     const baseLength = this.personality.responseStyle.averageLength;
     
     if (config.openaiModel === 'gpt-5-nano') {
-      // GPT-5 nano нужно больше токенов для reasoning + ответ
-      const multiplier = 12;
-      return Math.max(500, Math.min(2000, Math.round(baseLength * multiplier)));
+      return Math.max(400, Math.min(1500, Math.round(baseLength * 8)));
     } else if (config.openaiModel === 'gpt-5-chat-latest') {
-      // GPT-5-chat-latest - премиум модель, больше токенов для качественных ответов
-      const multiplier = 8;
-      return Math.max(800, Math.min(3000, Math.round(baseLength * multiplier)));
+      return Math.max(600, Math.min(2000, Math.round(baseLength * 6)));
     } else {
-      // Остальные модели
-      const multiplier = 3;
-      return Math.max(300, Math.min(1200, Math.round(baseLength * multiplier)));
+      return Math.max(200, Math.min(800, Math.round(baseLength * 4)));
     }
   }
 
   /**
-   * Убрать все reasoning/verbosity логику
+   * Генерация ответа с оптимизацией для продакшена и кэшированием
    */
   async generateResponse(
     messageText: string,
@@ -64,120 +63,140 @@ export class AIEngine {
       return null;
     }
 
+    const startTime = Date.now();
+    
+    // Создаем ключ кэша на основе контекста
+    const cacheKey = this.buildCacheKey(messageText, author, context);
+    
+    // Проверяем кэш (только для повторяющихся сообщений)
+    if (this.shouldUseCache(messageText)) {
+      const cachedResponse = this.responseCache.get(cacheKey);
+      if (cachedResponse) {
+        const duration = Date.now() - startTime;
+        Logger.performance('AI генерация (кэш)', duration);
+        Logger.ai(`Ответ из кэша`, `"${cachedResponse.substring(0, 50)}..."`);
+        return cachedResponse;
+      }
+    }
+
     try {
-      // Получаем профиль пользователя если доступен
-      let userProfile: UserProfile | null = null;
-      if (this.profiler) {
-        userProfile = await this.profiler.getProfile(author);
-        if (!userProfile) {
-          // Если профиля нет, быстро анализируем пользователя
-          try {
-            userProfile = await this.profiler.analyzeUser(author);
-            Logger.debug(`📋 Создан новый профиль для ${author}`);
-          } catch (error) {
-            Logger.warn(`Не удалось создать профиль для ${author}: ${error}`);
-          }
+      // ЭТАП 8: Получаем эмоциональную адаптацию
+      let emotionalAdaptation: EmotionalAdaptation | null = null;
+      if (context.memoryContext) {
+        try {
+          emotionalAdaptation = this.emotionalAdapter.adaptToEmotionalState(
+            author,
+            messageText,
+            context.memoryContext
+          );
+        } catch (error) {
+          Logger.warn('Ошибка при получении эмоциональной адаптации:', error);
         }
       }
       
-      const prompt = this.buildPromptWithMemory(messageText, author, context, userProfile);
+      const prompt = this.buildPrompt(messageText, author, context, emotionalAdaptation);
       const maxTokens = this.calculateMaxTokens();
       
-      Logger.debug(`Отправляем запрос к AI модель: ${config.openaiModel}, maxTokens: ${maxTokens}`);
-      Logger.debug(`Системный промпт: ${prompt.system.substring(0, 100)}...`);
+      Logger.ai(`Запрос к модели: ${config.openaiModel}`, `maxTokens: ${maxTokens}`);
       
-      const requestParams: any = {
-        model: config.openaiModel,
-        messages: [
-          {
-            role: 'system',
-            content: prompt.system
-          },
-          {
-            role: 'user', 
-            content: prompt.user
-          }
-        ],
-        max_completion_tokens: maxTokens
-      };
-
-      // Настройки для разных моделей
-      if (config.openaiModel === 'gpt-5-nano') {
-        // Можно попробовать отключить reasoning для скорости
-        // requestParams.reasoning_effort = 'minimal'; // еще быстрее
-        requestParams.reasoning_effort = 'low';
-        requestParams.verbosity = 'low';
-      } else if (config.openaiModel === 'gpt-5-chat-latest') {
-        // GPT-5-chat-latest оптимальные настройки для чата
-        requestParams.temperature = 0.7;    // Баланс креативности и точности
-        requestParams.top_p = 0.95;         // Немного сужаем выбор токенов
-        requestParams.store = true;         // Сохраняем для аналитики
-      } else if (config.openaiModel.startsWith('gpt-5')) {
-        // Другие GPT-5 модели
-        requestParams.verbosity = 'medium';
-      } else {
-        // Старые модели
-        requestParams.temperature = 0.9;
-        requestParams.presence_penalty = 0.8;
-        requestParams.frequency_penalty = 0.5;
-      }
-
+      const requestParams = this.buildRequestParams(prompt, maxTokens);
       const response = await this.openai!.chat.completions.create(requestParams);
       
-      Logger.debug(`Получен ответ от AI: ${JSON.stringify(response, null, 2)}`);
-
       const aiResponse = response.choices[0]?.message?.content?.trim();
       
       if (aiResponse) {
-        // Чистка имени (без изменений)
-        let cleanResponse = aiResponse;
-
-        // Удаляем все возможные варианты подписи в начале
-        const namePatterns = [
-          /^Гейсандр\s*Кулович\s*:\s*/i,
-          /^Гейсандр\s*:\s*/i,
-          /^Геясандр\s*:\s*/i,
-          /^Саня\s*:\s*/i,
-          /^Шурик\s*:\s*/i,
-          /^Александр\s*:\s*/i,
-          /^Алекс\s*:\s*/i,
-        ];
-
-        for (const pattern of namePatterns) {
-          cleanResponse = cleanResponse.replace(pattern, "");
-        }
-
-        cleanResponse = cleanResponse.trim();
+        const cleanResponse = this.cleanResponse(aiResponse);
         
         if (cleanResponse) {
-          Logger.info(`🧠 AI сгенерировал ответ: "${cleanResponse.substring(0, 50)}..."`);
+          // Сохраняем в кэш (только для подходящих сообщений)
+          if (this.shouldUseCache(messageText)) {
+            this.responseCache.set(cacheKey, cleanResponse, 5 * 60 * 1000); // 5 минут TTL
+          }
+          
+          const duration = Date.now() - startTime;
+          Logger.performance('AI генерация', duration);
+          Logger.ai(`Ответ сгенерирован`, `"${cleanResponse.substring(0, 50)}..."`);
           return cleanResponse;
         }
       }
       
       return null;
     } catch (error) {
+      const duration = Date.now() - startTime;
       Logger.error("Ошибка при обращении к OpenAI:", error);
-      Logger.error("Детали ошибки:", JSON.stringify(error, null, 2));
+      Logger.performance('AI генерация (ошибка)', duration);
       return null;
     }
   }
 
   /**
+   * Упрощенная сборка параметров запроса
+   */
+  private buildRequestParams(prompt: { system: string; user: string }, maxTokens: number): any {
+    const requestParams: any = {
+      model: config.openaiModel,
+      messages: [
+        { role: 'system', content: prompt.system },
+        { role: 'user', content: prompt.user }
+      ],
+      max_completion_tokens: maxTokens
+    };
+
+    // Настройки для разных моделей
+    if (config.openaiModel === 'gpt-5-nano') {
+      requestParams.reasoning_effort = 'low';
+      requestParams.verbosity = 'low';
+    } else if (config.openaiModel === 'gpt-5-chat-latest') {
+      requestParams.temperature = 0.7;
+      requestParams.top_p = 0.95;
+      requestParams.store = true;
+    } else {
+      // Fallback для других моделей
+      requestParams.temperature = 0.8;
+    }
+
+    return requestParams;
+  }
+
+  /**
+   * Очистка ответа от лишних подписей
+   */
+  private cleanResponse(aiResponse: string): string {
+    let cleanResponse = aiResponse;
+
+    // Удаляем все возможные варианты подписи в начале
+    const namePatterns = [
+      /^Гейсандр\s*Кулович\s*:\s*/i,
+      /^Гейсандр\s*:\s*/i,
+      /^Геясандр\s*:\s*/i,
+      /^Саня\s*:\s*/i,
+      /^Шурик\s*:\s*/i,
+      /^Александр\s*:\s*/i,
+      /^Алекс\s*:\s*/i,
+    ];
+
+    for (const pattern of namePatterns) {
+      cleanResponse = cleanResponse.replace(pattern, "");
+    }
+
+    return cleanResponse.trim();
+  }
+
+  /**
    * Строит промпт в зависимости от модели
    */
-  private buildPromptWithMemory(
+  private buildPrompt(
     messageText: string,
     author: string,
     context: ChatContext,
-    userProfile?: UserProfile | null
+    emotionalAdaptation?: EmotionalAdaptation | null
   ): { system: string; user: string; } {
     const isNano = config.openaiModel === 'gpt-5-nano';
     
     if (isNano) {
-      return this.buildNanoPrompt(messageText, author, context, userProfile);
+      return this.buildNanoPrompt(messageText, author, context, emotionalAdaptation);
     } else {
-      return this.buildFullPrompt(messageText, author, context, userProfile);
+      return this.buildCompactPrompt(messageText, author, context, emotionalAdaptation);
     }
   }
 
@@ -188,12 +207,12 @@ export class AIEngine {
     messageText: string,
     author: string,
     context: ChatContext,
-    userProfile?: UserProfile | null
+    emotionalAdaptation?: EmotionalAdaptation | null
   ): { system: string; user: string; } {
     const memoryContext = context.memoryContext;
     const recentContext = context.recentMessages
-      .slice(-3)
-      .map((msg) => `${msg.author}: ${msg.text}`)
+      .slice(-2)
+      .map((msg) => `${msg.author}: ${(msg.text || '').replace(/[`$\\]/g, '_')}`)
       .join("\n");
 
     let memoryPrompt = "";
@@ -203,195 +222,177 @@ export class AIEngine {
         memoryPrompt += `\n${author}: знакомы ${userRelation.interactionCount} дней`;
       }
 
-      // Только самые релевантные воспоминания
+      // Только 1 воспоминание
       if (memoryContext.relevantHistory && memoryContext.relevantHistory.length > 0) {
         const bestMemory = memoryContext.relevantHistory[0];
-        memoryPrompt += `\nВспоминаю: "${bestMemory.content}"`;
+        memoryPrompt += `\nВспоминаю: "${bestMemory.content.substring(0, 50)}"`;
       }
 
-      // Топ-3 темы
+      // Топ-2 темы
       if (memoryContext.activeTopics.length > 0) {
-        const topics = memoryContext.activeTopics.slice(0, 3).map(t => t.topic).join(", ");
-        memoryPrompt += `\nОбсуждали: ${topics}`;
+        const topics = memoryContext.activeTopics.slice(0, 2).map(t => t.topic).join(", ");
+        memoryPrompt += `\nТемы: ${topics}`;
+      }
+
+      // 1 событие
+      if (memoryContext.relevantEvents && memoryContext.relevantEvents.length > 0) {
+        const event = memoryContext.relevantEvents[0];
+        memoryPrompt += `\nСобытие: ${event.title}`;
       }
     }
 
-    // Адаптация под профиль пользователя
-    let stylePrompt = "";
-    if (userProfile) {
-      const style = userProfile.communicationStyle;
-      const social = userProfile.socialBehavior;
-      
-      // Адаптируем формальность
-      if (style.formalityLevel < 0.3) {
-        stylePrompt += "\nОбщайся неформально, без лишних вежливостей.";
-      } else if (style.formalityLevel > 0.7) {
-        stylePrompt += "\nБудь чуть более вежливым и формальным.";
+    // Эмоциональная адаптация
+    let emotionalPrompt = "";
+    if (emotionalAdaptation) {
+      const { emotionalContext, behaviorInstructions } = emotionalAdaptation.promptAdjustments;
+      if (emotionalContext) {
+        emotionalPrompt += `\n${emotionalContext}`;
       }
-      
-      // Адаптируем эмоциональность
-      if (style.emotionalExpression > 0.6) {
-        stylePrompt += "\nМожешь быть эмоциональнее, он это ценит.";
-      }
-      
-      // Адаптируем под интересы
-      if (userProfile.interests.topTopics.length > 0) {
-        const mainInterest = userProfile.interests.topTopics[0].topic;
-        stylePrompt += `\nЕго интересует: ${mainInterest}.`;
-      }
-      
-      // Реагируем на социальное поведение
-      if (social.humor > 0.4) {
-        stylePrompt += "\nМожешь шутить - он оценит.";
-      }
-      
-      if (social.helpfulness > 0.3) {
-        stylePrompt += "\nОн любит помогать, можешь это отметить.";
+      if (behaviorInstructions) {
+        emotionalPrompt += `\n${behaviorInstructions}`;
       }
     }
 
-    const system = `Ты Саня из этого чата.${memoryPrompt}${stylePrompt}
+    // Контекстная адаптация поведения
+    let contextualPrompt = "";
+    if (context.responseStyle && context.responseStyle !== 'casual') {
+      switch (context.responseStyle) {
+        case 'supportive':
+          contextualPrompt += `\nБудь поддерживающим.`;
+          break;
+        case 'humorous': 
+          contextualPrompt += `\nМожешь шутить.`;
+          break;
+        case 'technical':
+          contextualPrompt += `\nОтвечай технично.`;
+          break;
+        case 'careful':
+          contextualPrompt += `\nБудь осторожным.`;
+          break;
+      }
+    }
 
-Ответь коротко как друг:
-
-${recentContext}`;
+    // Безопасная конкатенация строк без template literals
+    const systemParts = [
+      'Ты Саня из чата.',
+      memoryPrompt || '',
+      emotionalPrompt || '',
+      contextualPrompt || '',
+      '\n\nПоследние сообщения:',
+      '\n' + (recentContext || ''),
+      '\n\nОтветь коротко как друг.'
+    ];
+    
+    const system = systemParts.join('');
 
     return { 
       system, 
-      user: `${author}: ${messageText}` 
+      user: author + ': ' + messageText // Безопасная конкатенация без template literals
     };
   }
 
   /**
-   * Полный промпт для мощных моделей - с характером и богатой памятью
+   * Компактный промпт для других моделей - оптимизированный
    */
-  private buildFullPrompt(
+  private buildCompactPrompt(
     messageText: string,
     author: string,
     context: ChatContext,
-    userProfile?: UserProfile | null
+    emotionalAdaptation?: EmotionalAdaptation | null
   ): { system: string; user: string; } {
     const memoryContext = context.memoryContext;
     const recentContext = context.recentMessages
-      .slice(-5)
-      .map((msg) => `${msg.author}: ${msg.text}`)
+      .slice(-3)
+      .map((msg) => `${msg.author}: ${(msg.text || '').replace(/[`$\\]/g, '_')}`)
       .join("\n");
 
-    let characterPrompt = `Ты Саня (Гейсандр Кулович) - постоянный участник этого чата уже несколько лет. 
-Ты обычный парень, которому комфортно общаться с друзьями.
+    let characterPrompt = `Ты Саня (Гейсандр Кулович) - участник этого чата.
 
-ТВОЙ СТИЛЬ ОБЩЕНИЯ:
+Твой стиль:
 - Говоришь естественно, без попыток казаться крутым
-- Иногда используешь разговорный сленг, когда это уместно
-- Можешь материться, но в меру и к месту
-- Отвечаешь по существу, не растекаешься мыслью
-- Хорошо помнишь людей и прошлые разговоры  
-- Реагируешь адекватно ситуации
-- С друзьями можешь пошутить или подколоть, но дружелюбно`;
+- Можешь использовать сленг когда уместно
+- Отвечаешь по существу
+- Помнишь людей и разговоры`;
 
     let memoryPrompt = "";
     if (memoryContext) {
       const userRelation = memoryContext.userRelationships.get(author);
       if (userRelation) {
-        memoryPrompt += `\n\nТВОЯ СВЯЗЬ С ${author.toUpperCase()}:`;
-        memoryPrompt += `\n- Знакомы ${userRelation.interactionCount} дней`;
-        memoryPrompt += `\n- Отношения: ${userRelation.relationship || 'хороший друг по чату'}`;
+        memoryPrompt += `\n\nС ${author}: знакомы ${userRelation.interactionCount} дней, отношения: ${userRelation.relationship || 'друг'}`;
       }
 
-      // Подробные воспоминания
+      // Только важные воспоминания
       if (memoryContext.relevantHistory && memoryContext.relevantHistory.length > 0) {
-        memoryPrompt += `\n\nЧТО ПОМНИШЬ ПРО ${author.toUpperCase()}:`;
-        memoryContext.relevantHistory.slice(0, 5).forEach((memory, i) => {
-          memoryPrompt += `\n${i + 1}. ${memory.author}: "${memory.content}"`;
+        memoryPrompt += `\n\nПомнишь про ${author}:`;
+        memoryContext.relevantHistory.slice(0, 2).forEach((memory, i) => {
+          memoryPrompt += `\n${i + 1}. "${memory.content.substring(0, 60)}"`;
         });
       }
 
-      // Все активные темы для контекста
+      // Топ-5 тем
       if (memoryContext.activeTopics.length > 0) {
-        const topics = memoryContext.activeTopics.slice(0, 10).map(t => t.topic).join(", ");
-        memoryPrompt += `\n\nТЕМЫ КОТОРЫЕ ОБСУЖДАЛИ: ${topics}`;
+        const topics = memoryContext.activeTopics.slice(0, 5).map(t => t.topic).join(", ");
+        memoryPrompt += `\n\nТемы чата: ${topics}`;
       }
 
-      if (memoryContext.currentMood && memoryContext.currentMood !== "neutral") {
-        memoryPrompt += `\nНАСТРОЕНИЕ В ЧАТЕ: ${memoryContext.currentMood}`;
-      }
-
-      // Добавляем контекст разговора
-      if (memoryContext.conversationSummaries && memoryContext.conversationSummaries.length > 0) {
-        memoryPrompt += `\n\nПРЕДЫДУЩИЕ РАЗГОВОРЫ:`;
-        memoryContext.conversationSummaries.slice(0, 2).forEach(summary => {
-          memoryPrompt += `\n- ${summary.summary}`;
+      // События чата
+      if (memoryContext.relevantEvents && memoryContext.relevantEvents.length > 0) {
+        memoryPrompt += `\n\nСобытия:`;
+        memoryContext.relevantEvents.slice(0, 2).forEach((event, i) => {
+          const timeAgo = Math.floor((Date.now() - event.timestamp.getTime()) / (1000 * 60 * 60 * 24));
+          memoryPrompt += `\n${i + 1}. ${event.title} (${timeAgo}д назад)`;
         });
       }
     }
 
-    // Адаптация под профиль пользователя (расширенная версия)
-    let stylePrompt = "";
-    if (userProfile) {
-      stylePrompt += `\n\nАДАПТАЦИЯ ПОД ${author.toUpperCase()}:`;
-      
-      const style = userProfile.communicationStyle;
-      const social = userProfile.socialBehavior;
-      
-      // Подробная адаптация стиля
-      if (style.formalityLevel < 0.2) {
-        stylePrompt += `\n- Совсем неформально, как с корешем`;
-      } else if (style.formalityLevel < 0.4) {
-        stylePrompt += `\n- Неформально, дружески`;
-      } else if (style.formalityLevel > 0.7) {
-        stylePrompt += `\n- Чуть более вежливо и корректно`;
+    // Эмоциональная адаптация
+    let emotionalPrompt = "";
+    if (emotionalAdaptation) {
+      const { emotionalContext, behaviorInstructions } = emotionalAdaptation.promptAdjustments;
+      if (emotionalContext) {
+        emotionalPrompt += `\n\nЭмоции: ${emotionalContext}`;
       }
-      
-      if (style.emotionalExpression > 0.6) {
-        stylePrompt += `\n- Можешь быть эмоциональнее - он экспрессивный`;
-      } else if (style.emotionalExpression < 0.3) {
-        stylePrompt += `\n- Сдержанно, он не очень эмоциональный`;
-      }
-      
-      if (style.initiationRate > 0.4) {
-        stylePrompt += `\n- Он любит начинать разговоры - можешь развить тему`;
-      }
-      
-      // Социальное поведение
-      if (social.humor > 0.5) {
-        stylePrompt += `\n- Можешь шутить и стебаться - он оценит юмор`;
-      } else if (social.humor < 0.2) {
-        stylePrompt += `\n- Серьезнее, не особо шутлив`;
-      }
-      
-      if (social.helpfulness > 0.4) {
-        stylePrompt += `\n- Он готов помочь - можешь это отметить или попросить совет`;
-      }
-      
-      if (social.supportiveness > 0.4) {
-        stylePrompt += `\n- Он поддерживает других - можешь быть открытее`;
-      }
-      
-      // Интересы и темы
-      if (userProfile.interests.topTopics.length > 0) {
-        const topInterests = userProfile.interests.topTopics.slice(0, 3);
-        stylePrompt += `\n- Его интересует: ${topInterests.map(t => t.topic).join(', ')}`;
-      }
-      
-      // Активность
-      const peak = userProfile.activityPattern.peakActivity;
-      if (peak >= 6 && peak <= 10) {
-        stylePrompt += `\n- Он жаворонок (пик в ${peak}:00) - может быть бодрый утром`;
-      } else if (peak >= 20 && peak <= 2) {
-        stylePrompt += `\n- Он сова (пик в ${peak}:00) - может быть активнее вечером`;
+      if (behaviorInstructions) {
+        emotionalPrompt += `\nПоведение: ${behaviorInstructions}`;
       }
     }
 
-    const system = `${characterPrompt}${memoryPrompt}${stylePrompt}
+    // Контекстная адаптация (расширенная версия)
+    let contextualPrompt = "";
+    if (context.responseStyle && context.responseStyle !== 'casual') {
+      contextualPrompt += `\n\nСитуация:`;
+      switch (context.responseStyle) {
+        case 'supportive':
+          contextualPrompt += `\n- Будь поддерживающим и понимающим`;
+          break;
+        case 'humorous':
+          contextualPrompt += `\n- Можешь шутить и веселиться`;
+          break;
+        case 'technical':
+          contextualPrompt += `\n- Говори по существу, технично`;
+          break;
+        case 'careful':
+          contextualPrompt += `\n- Будь осторожным и тактичным`;
+          break;
+      }
+    }
 
-ПОСЛЕДНИЕ СООБЩЕНИЯ:
-${recentContext}
-
-Отвечай естественно, как Саня из чата. Используй память, контекст и адаптируйся под собеседника.`;
+    // Безопасная конкатенация строк без template literals
+    const systemParts = [
+      characterPrompt || '',
+      memoryPrompt || '',
+      emotionalPrompt || '',
+      contextualPrompt || '',
+      '\n\nПоследние сообщения:',
+      '\n' + (recentContext || ''),
+      '\n\nОтвечай естественно как Саня из чата.'
+    ];
+    
+    const system = systemParts.join('');
 
     return { 
       system, 
-      user: `${author}: ${messageText}` 
+      user: author + ': ' + messageText // Безопасная конкатенация без template literals
     };
   }
 
@@ -403,6 +404,87 @@ ${recentContext}
   }
 
   getModelInfo(): string {
-    return this.isEnabled ? `${config.openaiModel} с памятью` : "отключен";
+    return this.isEnabled ? `${config.openaiModel} с памятью и кэшированием` : "отключен";
+  }
+
+  // Методы для работы с кэшированием
+
+  /**
+   * Создает ключ кэша на основе контекста
+   */
+  private buildCacheKey(messageText: string, author: string, context: ChatContext): string {
+    // Используем только основные параметры для ключа
+    const normalizedText = messageText.toLowerCase().trim();
+    const recentMessagesHash = this.hashRecentMessages(context.recentMessages || []);
+    
+    return `${author}:${normalizedText}:${recentMessagesHash}:${config.openaiModel}`;
+  }
+
+  /**
+   * Создает хэш недавних сообщений для контекста
+   */
+  private hashRecentMessages(messages: any[]): string {
+    // Берем только последние 3 сообщения для контекста
+    const recentContext = messages.slice(-3).map(msg => 
+      (msg.author || 'Unknown') + ':' + (msg.text || '').substring(0, 20)
+    ).join('|');
+    
+    // Безопасное хэширование без btoa (работает с Unicode)
+    let hash = 0;
+    for (let i = 0; i < recentContext.length; i++) {
+      const char = recentContext.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // 32-битный integer
+    }
+    return Math.abs(hash).toString(16).substring(0, 16);
+  }
+
+  /**
+   * Определяет стоит ли использовать кэш для данного сообщения
+   */
+  private shouldUseCache(messageText: string): boolean {
+    // Кэшируем только короткие однотипные сообщения
+    const text = messageText.toLowerCase().trim();
+    
+    // Простые приветствия и однословные ответы
+    const cacheablePatterns = [
+      /^привет/,
+      /^здарова/,
+      /^как дела/,
+      /^что нового/,
+      /^да$/,
+      /^нет$/,
+      /^ок$/,
+      /^спасибо$/,
+      /^пока$/
+    ];
+    
+    // Кэшируем только короткие сообщения (меньше 50 символов)
+    if (text.length > 50) return false;
+    
+    return cacheablePatterns.some(pattern => pattern.test(text));
+  }
+
+  /**
+   * Получает статистику кэша AI
+   */
+  getCacheStats(): any {
+    return this.responseCache.getStats();
+  }
+
+  /**
+   * Очищает кэш AI ответов
+   */
+  clearCache(): void {
+    this.responseCache.clear();
+    Logger.info('🧹 Кэш AI ответов очищен');
+  }
+
+  /**
+   * Принудительная очистка просроченных записей
+   */
+  cleanupCache(): void {
+    this.responseCache.cleanup();
+    Logger.debug('🧹 Очистка просроченных AI ответов завершена');
   }
 }

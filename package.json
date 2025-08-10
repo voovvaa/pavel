@@ -12,8 +12,10 @@
     "type-check": "tsc --noEmit",
     "analyze": "bun run src/analysis/analyzer.ts",
     "generate-mock": "bun run src/utils/mock-generator.ts",
-    "patterns": "bun run src/analysis/pattern-extractor.ts",
+    "patterns": "bun run src/analysis/pattern-extractor-cli.ts",
     "test-ai": "bun run src/ai/ai-tester.ts",
+    "health-check": "bun run src/utils/health-check.ts",
+    "cache-stats": "bun run src/utils/cache-analyzer.ts",
     "memory-stats": "bun run src/memory/memory-viewer.ts",
     "import-history": "bun run src/utils/import-history.js",
     "analyze-profiles": "bun run src/analysis/profile-tester.ts",
@@ -21,19 +23,22 @@
     "compare-models": "bun run src/ai/model-comparison-tester.ts",
     "test-speed": "bun run src/ai/speed-comparison-tester.ts",
     "test-images": "bun run src/ai/image-tester-cli.ts",
-    "cost-analysis": "bun run src/ai/cost-analyzer.ts"
+    "cost-analysis": "bun run src/ai/cost-analyzer.ts",
+    "test-emotions": "bun run src/utils/test-emotions.ts",
+    "test-emotional-adaptation": "bun run src/utils/test-emotional-adaptation.ts"
   },
   "keywords": ["telegram", "bot", "ai", "personality"],
   "author": "Your Name",
   "license": "MIT",
   "dependencies": {
     "@inquirer/select": "^4.3.1",
-    "node-telegram-bot-api": "^0.64.0",
-    "openai": "^5.12.1"
+    "node-telegram-bot-api": "^0.66.0",
+    "openai": "^5.12.2"
   },
   "devDependencies": {
-    "@types/node": "^20.10.0",
-    "@types/node-telegram-bot-api": "^0.64.0",
-    "typescript": "^5.3.0"
+    "@types/bun": "^1.2.19",
+    "@types/node": "^22.8.0",
+    "@types/node-telegram-bot-api": "^0.64.9",
+    "typescript": "^5.7.2"
   }
 }

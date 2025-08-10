@@ -46,6 +46,12 @@ This is a sophisticated Telegram chatbot named "Гейсандр Кулович"
 - Different prompt strategies for nano vs full GPT-5 models
 - Pattern matching for immediate responses to specific keywords
 
+**Stage 9: Smart Behavior System (COMPLETED):**
+- Dynamic activity scheduling based on real chat patterns (`src/core/activity-manager.ts`)
+- Event tracking and long-term memory for natural conversation references (`src/core/event-tracker.ts`)
+- Contextual behavior optimization that adapts response style to situational context
+- Smart probability calculations combining activity + emotions + situational awareness
+
 ## Development Commands
 
 ### Essential Commands
