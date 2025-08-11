@@ -18,7 +18,7 @@ jobs:
   # Этап 1: Тестирование и качество кода
   test:
     name: 🧪 Tests & Code Quality
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -40,7 +40,7 @@ jobs:
   # Этап 2: Деплой на Synology NAS (только для main branch)
   deploy:
     name: 🏠 Deploy to Synology NAS
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: test
     if: github.ref == 'refs/heads/main'
     environment: production
@@ -53,12 +53,7 @@ jobs:
             docker-compose.yml
             .env.docker.example
 
-      - name: Setup SSH key
-        uses: webfactory/ssh-agent@v0.8.0
-        with:
-          ssh-private-key: ${{ secrets.SYNOLOGY_SSH_KEY }}
-
-      - name: Deploy to Synology NAS
+      - name: Deploy to NAS (localhost)
         env:
           SYNOLOGY_HOST: ${{ secrets.SYNOLOGY_HOST }}
           SYNOLOGY_USER: ${{ secrets.SYNOLOGY_USER }}
@@ -66,19 +61,35 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ALLOWED_CHAT_ID: ${{ secrets.ALLOWED_CHAT_ID }}
         run: |
-          # Создаем директорию проекта на NAS
-          ssh -o StrictHostKeyChecking=no $SYNOLOGY_USER@$SYNOLOGY_HOST "
-            mkdir -p /volume1/docker/geysandr-bot
-          "
+          # Мы уже на NAS, используем localhost
+          PROJECT_DIR="/volume1/docker/geysandr-bot"
           
-          # Копируем файлы деплоя
-          scp -o StrictHostKeyChecking=no docker-compose.yml $SYNOLOGY_USER@$SYNOLOGY_HOST:/volume1/docker/geysandr-bot/
-          scp -o StrictHostKeyChecking=no -r scripts/ $SYNOLOGY_USER@$SYNOLOGY_HOST:/volume1/docker/geysandr-bot/
+          echo "🏠 Деплой на localhost (мы уже на NAS!)"
           
-          # Создаем .env.docker на NAS
-          ssh -o StrictHostKeyChecking=no $SYNOLOGY_USER@$SYNOLOGY_HOST "
-            cd /volume1/docker/geysandr-bot
-            cat > .env.docker << EOF
+          # Создаем директории проекта
+          mkdir -p "$PROJECT_DIR"
+          mkdir -p "$PROJECT_DIR/chat"
+          mkdir -p "$PROJECT_DIR/data"
+          mkdir -p "$PROJECT_DIR/logs"
+          
+          # Копируем файлы проекта локально
+          cp -r \
+            Dockerfile \
+            docker-compose.yml \
+            package.json \
+            bun.lockb \
+            tsconfig.json \
+            src/ \
+            scripts/ \
+            "$PROJECT_DIR/"
+          
+          # Копируем личность если есть
+          if [ -f "chat/result_personality.json" ]; then
+            cp chat/result_personality.json "$PROJECT_DIR/chat/"
+          fi
+          
+          # Создаем .env.docker с секретами
+          cat > "$PROJECT_DIR/.env.docker" << EOF
           TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN
           OPENAI_API_KEY=$OPENAI_API_KEY
           ALLOWED_CHAT_ID=$ALLOWED_CHAT_ID
@@ -91,20 +102,16 @@ jobs:
           NODE_ENV=production
           PERSONALITY_FILE=/app/chat/result_personality.json
           EOF
-          "
           
-          # Выполняем деплой с локальной сборкой
-          ssh -o StrictHostKeyChecking=no $SYNOLOGY_USER@$SYNOLOGY_HOST "
-            cd /volume1/docker/geysandr-bot
-            chmod +x scripts/*.sh
-            
-            # Собираем образ локально на NAS
-            echo '🐳 Собираем Docker образ локально...'
-            docker build -t geysandr-bot:latest .
-            
-            # Запускаем деплой скрипт
-            ./scripts/deploy.sh
-          "
+          # Выполняем деплой
+          cd "$PROJECT_DIR"
+          chmod +x scripts/*.sh
+          
+          echo "🐳 Собираем Docker образ..."
+          docker build -t geysandr-bot:latest .
+          
+          echo "🚀 Запускаем деплой..."
+          ./scripts/deploy.sh
 
   # Этап 4: Переобучение личности (опционально)
   retrain:
