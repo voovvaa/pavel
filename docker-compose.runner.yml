@@ -9,7 +9,7 @@ services:
     environment:
       # Основные настройки GitHub
       REPO_URL: https://github.com/voovvaa/pavel
-      REGISTRATION_TOKEN: "REPLACE_WITH_YOUR_TOKEN"
+      ACCESS_TOKEN: "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"
       RUNNER_NAME: "synology-nas-runner"
       RUNNER_WORKDIR: "/tmp/runner/work"
       RUNNER_GROUP: "default"
