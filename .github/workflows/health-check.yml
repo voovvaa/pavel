@@ -1,0 +1,188 @@
+name: 🩺 Health Check & Monitoring
+
+on:
+  schedule:
+    # Каждый час проверяем здоровье бота
+    - cron: '0 * * * *'
+  workflow_dispatch:
+    inputs:
+      deep_check:
+        description: 'Run deep health check'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  health-check:
+    name: 🏥 Health Check
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Setup SSH key
+        uses: webfactory/ssh-agent@v0.8.0
+        with:
+          ssh-private-key: ${{ secrets.SYNOLOGY_SSH_KEY }}
+
+      - name: Check bot health
+        id: health
+        env:
+          SYNOLOGY_HOST: ${{ secrets.SYNOLOGY_HOST }}
+          SYNOLOGY_USER: ${{ secrets.SYNOLOGY_USER }}
+        run: |
+          # Выполняем health check на NAS
+          HEALTH_OUTPUT=$(ssh -o StrictHostKeyChecking=no $SYNOLOGY_USER@$SYNOLOGY_HOST "
+            cd /volume1/docker/geysandr-bot
+            docker compose exec -T geysandr-bot bun run health-check --quick --json 2>/dev/null || echo '{\"status\":\"error\",\"message\":\"Container not responding\"}'
+          ")
+          
+          echo "health_output=$HEALTH_OUTPUT" >> $GITHUB_OUTPUT
+          
+          # Парсим статус
+          STATUS=$(echo "$HEALTH_OUTPUT" | jq -r '.status // "error"')
+          echo "status=$STATUS" >> $GITHUB_OUTPUT
+          
+          MESSAGE=$(echo "$HEALTH_OUTPUT" | jq -r '.message // "Unknown error"')
+          echo "message=$MESSAGE" >> $GITHUB_OUTPUT
+
+      - name: Deep health check (если включено)
+        if: github.event.inputs.deep_check == 'true'
+        env:
+          SYNOLOGY_HOST: ${{ secrets.SYNOLOGY_HOST }}
+          SYNOLOGY_USER: ${{ secrets.SYNOLOGY_USER }}
+        run: |
+          ssh -o StrictHostKeyChecking=no $SYNOLOGY_USER@$SYNOLOGY_HOST "
+            cd /volume1/docker/geysandr-bot
+            echo '📊 Container stats:'
+            docker stats --no-stream geysandr-kylovich-bot
+            
+            echo '📜 Recent logs:'
+            docker compose logs --tail=10 geysandr-bot
+            
+            echo '💾 Memory stats:'
+            docker compose exec -T geysandr-bot bun run memory-stats || true
+            
+            echo '⚡ Cache stats:'
+            docker compose exec -T geysandr-bot bun run cache-stats || true
+          "
+
+      - name: Restart bot if unhealthy
+        if: steps.health.outputs.status == 'unhealthy'
+        env:
+          SYNOLOGY_HOST: ${{ secrets.SYNOLOGY_HOST }}
+          SYNOLOGY_USER: ${{ secrets.SYNOLOGY_USER }}
+        run: |
+          echo "🚨 Bot is unhealthy, attempting restart..."
+          ssh -o StrictHostKeyChecking=no $SYNOLOGY_USER@$SYNOLOGY_HOST "
+            cd /volume1/docker/geysandr-bot
+            docker compose restart geysandr-bot
+            sleep 30
+            docker compose exec -T geysandr-bot bun run health-check --quick
+          "
+
+      - name: Send health status notification
+        if: always()
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.ALLOWED_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          format: markdown
+          message: |
+            🩺 **Health Check Report**
+            
+            📊 **Статус**: ${{ steps.health.outputs.status == 'healthy' && '✅ Healthy' || steps.health.outputs.status == 'degraded' && '⚠️ Degraded' || '❌ Unhealthy' }}
+            📝 **Сообщение**: ${{ steps.health.outputs.message }}
+            ⏰ **Время**: $(date)
+            
+            ${{ steps.health.outputs.status == 'unhealthy' && '🔄 **Автоматический перезапуск выполнен**' || '' }}
+
+  # Мониторинг использования ресурсов
+  resource-monitoring:
+    name: 📊 Resource Monitoring
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.event.schedule || github.event.inputs.deep_check == 'true'
+    steps:
+      - name: Setup SSH key
+        uses: webfactory/ssh-agent@v0.8.0
+        with:
+          ssh-private-key: ${{ secrets.SYNOLOGY_SSH_KEY }}
+
+      - name: Collect resource metrics
+        env:
+          SYNOLOGY_HOST: ${{ secrets.SYNOLOGY_HOST }}
+          SYNOLOGY_USER: ${{ secrets.SYNOLOGY_USER }}
+        run: |
+          ssh -o StrictHostKeyChecking=no $SYNOLOGY_USER@$SYNOLOGY_HOST "
+            cd /volume1/docker/geysandr-bot
+            
+            echo '📊 Собираем метрики ресурсов...'
+            
+            # Docker контейнер статистика
+            echo 'CONTAINER_STATS:' 
+            docker stats --no-stream --format 'table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.NetIO}}\t{{.BlockIO}}' geysandr-kylovich-bot
+            
+            # Размер volumes
+            echo 'VOLUME_SIZES:'
+            docker system df -v | grep geysandr
+            
+            # Системные ресурсы NAS
+            echo 'SYSTEM_RESOURCES:'
+            free -h
+            df -h /volume1
+            
+            # Логи размер
+            echo 'LOGS_SIZE:'
+            du -sh /var/lib/docker/containers/*/geysandr-*.log 2>/dev/null || echo 'No log files found'
+          " || echo "Failed to collect some metrics"
+
+  # Автоматическая очистка (еженедельно)
+  cleanup:
+    name: 🧹 Cleanup
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.event.schedule == '0 0 * * 0' # Воскресенье в полночь
+    steps:
+      - name: Setup SSH key
+        uses: webfactory/ssh-agent@v0.8.0
+        with:
+          ssh-private-key: ${{ secrets.SYNOLOGY_SSH_KEY }}
+
+      - name: Cleanup old Docker images and data
+        env:
+          SYNOLOGY_HOST: ${{ secrets.SYNOLOGY_HOST }}
+          SYNOLOGY_USER: ${{ secrets.SYNOLOGY_USER }}
+        run: |
+          ssh -o StrictHostKeyChecking=no $SYNOLOGY_USER@$SYNOLOGY_HOST "
+            echo '🧹 Выполняем еженедельную очистку...'
+            
+            cd /volume1/docker/geysandr-bot
+            
+            # Создаем бэкап перед очисткой
+            ./scripts/backup.sh
+            
+            # Очищаем неиспользуемые Docker образы
+            docker image prune -f
+            docker system prune -f --volumes
+            
+            # Ротация логов (оставляем последние 7 дней)
+            find /var/lib/docker/containers -name '*geysandr-*.log*' -mtime +7 -delete 2>/dev/null || true
+            
+            # Очистка старых бэкапов (оставляем последние 10)
+            cd backups 2>/dev/null && ls -t *.tar.gz 2>/dev/null | tail -n +11 | xargs -r rm -- || true
+            
+            echo '✅ Очистка завершена'
+          "
+
+      - name: Send cleanup report
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.ALLOWED_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          format: markdown
+          message: |
+            🧹 **Еженедельная очистка выполнена**
+            
+            ✅ Удалены неиспользуемые Docker образы
+            ✅ Очищены старые логи
+            ✅ Созданы новые бэкапы
+            ✅ Система готова к работе

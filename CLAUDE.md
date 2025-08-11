@@ -1,118 +1,159 @@
-# CLAUDE.md
+# CLAUDE.md - Техническая документация для разработчиков
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Этот файл предназначен для **Claude Code** (claude.ai/code) и разработчиков, работающих с кодовой базой проекта.
 
-## Architecture Overview
+## 🏗️ Архитектурный обзор
 
-This is a sophisticated Telegram chatbot named "Гейсандр Кулович" (Geisandr Kulovich) that combines personality-based pattern matching with AI-powered responses and persistent memory. The bot is built with TypeScript, runs on Bun runtime, and integrates with OpenAI's GPT-5 models.
+Это **продвинутый Telegram чат-бот** по имени "Гейсандр Кулович", который сочетает:
+- **Паттерн-матчинг** на основе личности
+- **AI-powered ответы** через OpenAI GPT-5  
+- **Долгосрочную память** с эмоциональным анализом
+- **Анализ изображений** через Vision API
+- **Систему событий** для естественных упоминаний
 
-### Core Components
+**Runtime:** Bun с TypeScript, SQLite встроена, полная интеграция с OpenAI.
 
-**AI Integration & Response Engine:**
-- `src/ai-engine.ts` - AI response generation with model-specific configurations for GPT-5 nano and GPT-5 chat-latest
-- `src/response-engine.ts` - Central response logic that decides between AI responses and pattern matching
-- `src/model-selector.ts` - Interactive model selection utility
+## 🔧 Ключевые компоненты
 
-**Memory System:**
-- `src/memory-manager.ts` - SQLite-based persistent memory for chat history, user relationships, and topics
-- `src/memory-viewer.ts` - Memory inspection and statistics utility
-- `memory.db` - SQLite database storing messages, user relationships, chat topics, and conversation summaries
+### 🤖 AI интеграция и генерация ответов
+- **`src/ai/ai-engine.ts`** - Интеграция OpenAI с поддержкой GPT-5 (nano/chat-latest)
+- **`src/ai/response-engine.ts`** - Центральная логика принятия решений (AI vs паттерны)
+- **`src/ai/model-selector.ts`** - Интерактивный выбор модели для настройки
 
-**Pattern-Based Responses:**
-- `chat/result_personality.json` - Extracted personality patterns and responses from chat analysis
-- `src/pattern-extractor.ts` - Utility to extract conversation patterns from chat exports
+### 💾 Система памяти
+- **`src/memory/memory-manager.ts`** - SQLite память с кэшированием для истории чата
+- **`src/memory/memory-viewer.ts`** - Утилиты просмотра и статистики памяти
+- **`memory.db`** - SQLite база с сообщениями, отношениями, темами, событиями
 
-**Chat Analysis Pipeline:**
-- `src/parser.ts` - Parse Telegram chat exports (JSON format)
-- `src/analytics.ts` - Statistical analysis of chat data
-- `src/analyzer.ts` - Higher-level chat behavior analysis
-- `src/visualizer.ts` - Generate analysis reports and statistics
+### 🎭 Эмоциональная система  
+- **`src/ai/emotion-analyzer.ts`** - Анализ 24 типов эмоций + групповая динамика
+- **`src/ai/emotional-adapter.ts`** - Адаптация поведения под эмоциональное состояние
+- **`src/analysis/user-profiler.ts`** - Детальное профилирование пользователей
 
-### Key Architecture Patterns
+### 🖼️ Анализ изображений
+- **`src/ai/image-analyzer.ts`** - GPT-4o Vision API с rate limiting
+- **`src/ai/image-tester.ts`** - Тестирование системы анализа изображений
 
-**Hybrid AI/Pattern System:**
-- AI mode configurable via `AI_MODE` environment variable (patterns_only, ai_only, hybrid)
-- AI responses for complex queries, patterns for quick reactions
-- Memory context passed to AI for contextual responses
+### 📅 Система событий (ЭТАП 9)
+- **`src/core/event-tracker.ts`** - Автоматическое обнаружение важных моментов
+- **`src/core/activity-manager.ts`** - Динамическое управление активностью
+- Интеграция с памятью для естественных упоминаний событий
 
-**Memory-Driven Context:**
-- All messages stored with metadata (importance, emotion, topics, mentions)
-- User relationships tracked (interaction count, common topics, relationship type)
-- Active topics maintained with mention frequency and importance scores
-- Memory context built dynamically for each AI response
+### 📊 Анализ чатов
+- **`src/analysis/parser.ts`** - Парсинг экспорта Telegram (JSON формат)
+- **`src/analysis/analytics.ts`** - Статистический анализ данных чата
+- **`src/analysis/pattern-extractor.ts`** - Извлечение паттернов поведения
 
-**Personality Simulation:**
-- Character prompt engineered to sound natural and avoid "trying too hard"
-- Different prompt strategies for nano vs full GPT-5 models
-- Pattern matching for immediate responses to specific keywords
+### 🛠️ Инфраструктура
+- **`src/core/cache-manager.ts`** - Умное кэширование с TTL и статистикой
+- **`src/core/health-monitor.ts`** - Мониторинг здоровья системы
+- **`src/utils/logger.ts`** - Структурированное логирование с уровнями
 
-**Stage 9: Smart Behavior System (COMPLETED):**
-- Dynamic activity scheduling based on real chat patterns (`src/core/activity-manager.ts`)
-- Event tracking and long-term memory for natural conversation references (`src/core/event-tracker.ts`)
-- Contextual behavior optimization that adapts response style to situational context
-- Smart probability calculations combining activity + emotions + situational awareness
+## 🔄 Архитектурные паттерны
 
-## Development Commands
+### 🧠 Гибридная AI/Паттерн система
+- **AI режим** настраивается через `AI_MODE` (patterns_only, ai_only, hybrid)
+- **AI ответы** для сложных запросов, **паттерны** для быстрых реакций
+- **Контекст памяти** автоматически передается в AI для релевантных ответов
 
-### Essential Commands
+### 💾 Память с управляемым контекстом
+- **Все сообщения** сохраняются с метаданными (важность, эмоции, темы)
+- **Отношения пользователей** отслеживаются (количество взаимодействий, общие темы)
+- **Активные темы** поддерживаются с частотой упоминаний и важностью
+- **Контекст памяти** строится динамически для каждого AI ответа
+
+### 🎭 Симуляция личности
+- **Характер персонажа** построен на реальных данных чата
+- **Промпты** оптимизированы для естественности (избегают "попыток казаться крутым")
+- **Разные стратегии промптов** для nano vs полных GPT-5 моделей
+- **Паттерн-матчинг** для мгновенных ответов на специфические ключевые слова
+
+### 📅 Система умного поведения (ЭТАП 9)
+- **Динамическое расписание активности** на основе реальных паттернов чата
+- **Отслеживание событий** с долгосрочной памятью для естественных упоминаний
+- **Контекстная адаптация поведения** под ситуационный контекст
+- **Умные вероятности** объединяющие активность + эмоции + ситуационную осведомленность
+
+## 🛠️ Команды разработки
+
+### Основные команды
 ```bash
-# Development with auto-reload
+# Разработка с авто-перезагрузкой
 bun run dev
 
-# Standard startup
+# Стандартный запуск
 bun start
 
-# Production build and run
+# Продакшн сборка и запуск
 bun run build
 bun run prod
 
-# Type checking
+# Проверка типов
 bun run type-check
 ```
 
-### Analysis & Utilities
+### Анализ и утилиты
 ```bash
-# Analyze chat export data
+# Анализ экспорта чата
 bun run analyze
 
-# Extract personality patterns from chat
+# Извлечение паттернов личности из чата
 bun run patterns
 
-# Test AI response generation
+# Тест генерации AI ответов
 bun run test-ai
 
-# View memory statistics  
+# Просмотр статистики памяти
 bun run memory-stats
 
-# Generate mock data for testing
+# Генерация тестовых данных
 bun run generate-mock
 ```
 
-### Memory Management
+### Специализированное тестирование
 ```bash
-# View memory for specific chat
-bun run memory-stats 316537427
+# Эмоциональная система
+bun run test-emotions
+bun run test-emotional-adaptation
 
-# Import historical chat data
-bun run import-history.js
+# Анализ изображений  
+bun run test-images
+bun run cost-analysis
+
+# Сравнение AI моделей
+bun run compare-models
+bun run test-speed
+
+# Мониторинг системы
+bun run health-check
+bun run cache-stats
 ```
 
-## Configuration
-
-### Environment Variables (.env)
+### Управление памятью
 ```bash
-# Core bot settings
+# Просмотр памяти для конкретного чата
+bun run memory-stats 316537427
+
+# Импорт исторических данных чата
+bun run import-history
+```
+
+## ⚙️ Конфигурация
+
+### Переменные окружения (.env)
+```bash
+# Основные настройки бота
 TELEGRAM_BOT_TOKEN=your_bot_token
 ALLOWED_CHAT_ID=optional_specific_chat_id
 DEV_MODE=true
 
-# AI configuration  
+# Конфигурация AI
 OPENAI_API_KEY=your_openai_key
-OPENAI_MODEL=gpt-5-nano  # or gpt-5-chat-latest
-AI_MODE=hybrid           # patterns_only, ai_only, hybrid
-AI_PROBABILITY=0.8
+OPENAI_MODEL=gpt-5-nano          # gpt-5-nano | gpt-5-chat-latest
+AI_MODE=hybrid                   # patterns_only | ai_only | hybrid
+AI_PROBABILITY=0.8               # Вероятность AI ответа (0.0-1.0)
 
-# Memory settings
+# Настройки памяти
 DATABASE_PATH=./memory.db
 MEMORY_DAYS=30
 SUMMARY_AFTER_MESSAGES=50
@@ -120,64 +161,140 @@ SHORT_TERM_LIMIT=25
 CONTEXT_RELEVANCE_THRESHOLD=0.7
 ```
 
-### Model-Specific Settings
-- **GPT-5 nano**: Uses reasoning_effort='low', verbosity='low' for efficiency
-- **GPT-5 chat-latest**: Uses temperature=0.7, top_p=0.95, store=true for quality
+### Специфичные настройки моделей
+- **GPT-5 nano**: Использует reasoning_effort='low', verbosity='low' для эффективности
+- **GPT-5 chat-latest**: Использует temperature=0.7, top_p=0.95, store=true для качества
 
-## Data Flow
+## 📊 Поток данных
 
-1. **Message Reception** → `bot.ts` receives Telegram message
-2. **Context Building** → `memory-manager.ts` builds memory context from database
-3. **Response Decision** → `response-engine.ts` decides AI vs patterns based on content
-4. **AI Generation** → `ai-engine.ts` generates response with memory context (if AI mode)
-5. **Pattern Matching** → Falls back to `result_personality.json` patterns if needed
-6. **Memory Storage** → All messages stored with extracted topics, emotions, importance
+1. **Получение сообщения** → `bot.ts` получает сообщение из Telegram
+2. **Построение контекста** → `memory-manager.ts` строит контекст памяти из базы данных
+3. **Решение об ответе** → `response-engine.ts` решает AI vs паттерны на основе содержимого
+4. **Генерация AI** → `ai-engine.ts` генерирует ответ с контекстом памяти (если AI режим)
+5. **Паттерн-матчинг** → Откат к паттернам `result_personality.json` при необходимости
+6. **Сохранение в память** → Все сообщения сохраняются с извлеченными темами, эмоциями, важностью
 
-## Working with AI Models
+## 🤖 Работа с AI моделями
 
-### GPT-5 Model Differences
-- **nano**: Fast, economical, lower token limits, simplified prompts
-- **chat-latest**: High-quality, conversational, full context, premium features
+### Различия GPT-5 моделей
+- **nano**: Быстрая, экономичная, низкие лимиты токенов, упрощенные промпты
+- **chat-latest**: Высокое качество, разговорная, полный контекст, премиум функции
 
-### Prompt Engineering
-- Character prompts in `buildFullPrompt()` method in `ai-engine.ts`
-- Memory context automatically injected with user relationships and conversation history
-- Recent personality refinement focuses on natural conversation vs forced coolness
+### Промпт-инжиниринг
+- **Промпты персонажа** в методе `buildPrompt()` в `ai-engine.ts`
+- **Контекст памяти** автоматически вставляется с отношениями пользователей и историей разговоров
+- **Недавние улучшения личности** фокусируются на естественной беседе vs принудительной крутости
 
-## Memory Database Schema
+### Оптимизация производительности
+- **Промпты сокращены в 3-5 раз** от оригинальной версии
+- **Кэширование** повторяющихся AI ответов (5 минут TTL)
+- **Rate limiting** для анализа изображений (30 сек между запросами)
+- **Timeout protection** для всех async операций
 
-### Tables
-- `messages`: All chat messages with metadata
-- `user_relationships`: User interaction history and relationship types
-- `chat_topics`: Active topics with mention frequency
-- `conversation_summaries`: Compressed conversation history
+## 💾 Схема базы данных памяти
 
-### Key Features
-- Automatic importance scoring for messages
-- Emotion detection and classification
-- Topic extraction and tracking
-- User relationship development over time
+### Таблицы
+- **`messages`**: Все сообщения чата с метаданными
+- **`user_relationships`**: История взаимодействий пользователей и типы отношений  
+- **`chat_topics`**: Активные темы с частотой упоминаний
+- **`emotional_profiles`**: Эмоциональные профили пользователей (ЭТАП 8)
+- **`group_emotional_states`**: Групповые эмоции (ЭТАП 8)  
+- **`chat_events`**: События чата (ЭТАП 9)
 
-## Chat Import and Analysis
+### Ключевые особенности
+- **Автоматическая оценка важности** сообщений
+- **Обнаружение и классификация эмоций**
+- **Извлечение и отслеживание тем**
+- **Развитие отношений с пользователями** со временем
 
-### Supported Formats
-- Telegram Desktop JSON exports in `chat/result.json`
-- Import script: `import-history.js` (filters last 6 months, extracts topics/emotions)
-- Chat ID migration support for database consistency
+## 📈 Импорт и анализ чатов
 
-### Analysis Pipeline
-1. Parse raw Telegram export (`parser.ts`)
-2. Extract statistical patterns (`analytics.ts`) 
-3. Generate personality patterns (`pattern-extractor.ts`)
-4. Build response database (`result_personality.json`)
+### Поддерживаемые форматы
+- **Экспорт Telegram Desktop JSON** в `chat/result.json`
+- **Скрипт импорта**: `import-history.js` (фильтрует последние 6 месяцев, извлекает темы/эмоции)
+- **Поддержка миграции Chat ID** для консистентности базы данных
 
-## Character Personality
+### Конвейер анализа
+1. **Парсинг** сырого экспорта Telegram (`parser.ts`)
+2. **Извлечение** статистических паттернов (`analytics.ts`)
+3. **Генерация** паттернов личности (`pattern-extractor.ts`)
+4. **Построение** базы ответов (`result_personality.json`)
 
-The bot simulates "Саня (Гейсандр Кулович)" with these characteristics:
-- Natural conversational style without forced slang
-- Contextual memory of all chat participants
-- Appropriate use of casual language when fitting
-- Friendly but not overly enthusiastic tone
-- Ability to reference past conversations naturally
+## 🎭 Личность персонажа
 
-Recent refinements focused on making the character less "cringey" and more naturally conversational rather than trying too hard to seem cool.
+Бот симулирует "Саня (Гейсандр Кулович)" с этими характеристиками:
+- **Естественный** разговорный стиль без принудительного сленга
+- **Контекстная память** всех участников чата
+- **Уместное** использование разговорного языка когда подходит
+- **Дружелюбный** но не излишне энтузиастичный тон
+- **Способность** естественно ссылаться на прошлые разговоры
+
+Недавние улучшения сосредоточены на том, чтобы сделать персонажа менее "криндж" и более естественно разговорчивым, а не пытающимся казаться крутым.
+
+## 🔧 Диагностика и отладка
+
+### Логи работы
+```
+🧠 Гейсандр Кулович вспомнил свои привычки!
+Гейсандр Кулович ответил в чат: "Да, точно!"  
+Гейсандр Кулович решил не встревать в разговор
+```
+
+### Отладочная информация
+При `DEV_MODE=true` выводится подробная информация о:
+- **Принятии решений** об ответе
+- **Выборе паттернов** vs AI генерации
+- **Контексте сообщений** и памяти
+- **Эмоциональной адаптации** и анализе событий
+
+### Статистика личности
+После извлечения паттернов выводится статистика:
+- **Количество** изученных манер поведения
+- **Уровень** вежливости и общительности  
+- **Активные часы** и дни недели
+- **Любимые темы** и словечки
+
+## 🚨 Диагностика проблем
+
+### Бот не отвечает
+1. **Проверьте** загрузку личности в логах
+2. **Убедитесь** что `PERSONALITY_FILE` указывает на существующий файл
+3. **Проверьте** что паттерны содержат релевантные ключевые слова
+4. **Запустите** `bun run health-check` для диагностики
+
+### Неподходящие ответы  
+1. **Пересоздайте** личность с обновленными данными
+2. **Проверьте** качество анализа исходного чата
+3. **Расширьте** стоп-слова в `parser.ts`
+4. **Протестируйте** через `bun run test-ai`
+
+### Проблемы производительности
+1. **Проверьте** использование памяти: `bun run memory-stats`
+2. **Очистите** кэши: `bun run cache-stats`
+3. **Мониторьте** API costs: `bun run cost-analysis`
+4. **Настройте** `AI_PROBABILITY` для экономии
+
+### Memory leaks и ошибки
+- **Все операции** защищены timeout (30-60 сек)
+- **Promise.race** для предотвращения зависших операций
+- **Автоматическая очистка** временных файлов
+- **Graceful error recovery** при сбоях API
+
+## 🎯 Результат
+
+После завершения всех этапов у вас есть полноценная цифровая личность, которая:
+- **Понимает контекст** разговоров и визуального контента
+- **Отвечает в стиле** изученного чата с эмоциональной адаптацией
+- **Умеет выбирать моменты** для ответа на основе активности
+- **Сохраняет индивидуальность** в общении с каждым участником
+- **Адаптируется** к расписанию активности и событиям чата
+- **Помнит важные события** и естественно о них упоминает
+- **Готова к продакшену** с полным мониторингом и отказоустойчивостью
+
+**Гейсандр Кулович готов к живому общению!** 🚀
+
+---
+
+**Обновление:** 10 августа 2025  
+**Статус:** Production Ready  
+**Покрытие:** Все этапы 1-9 завершены + рефакторинг

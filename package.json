@@ -25,7 +25,15 @@
     "test-images": "bun run src/ai/image-tester-cli.ts",
     "cost-analysis": "bun run src/ai/cost-analyzer.ts",
     "test-emotions": "bun run src/utils/test-emotions.ts",
-    "test-emotional-adaptation": "bun run src/utils/test-emotional-adaptation.ts"
+    "test-emotional-adaptation": "bun run src/utils/test-emotional-adaptation.ts",
+    "test-repetition": "bun run src/ai/test-repetition-analyzer.ts",
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f geysandr-bot",
+    "docker:deploy": "./scripts/deploy.sh",
+    "docker:update": "./scripts/update.sh",
+    "docker:backup": "./scripts/backup.sh"
   },
   "keywords": ["telegram", "bot", "ai", "personality"],
   "author": "Your Name",

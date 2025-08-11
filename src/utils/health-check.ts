@@ -1,5 +1,19 @@
 #!/usr/bin/env bun
 
+// Загружаем переменные окружения в самом начале
+import { readFileSync } from 'fs';
+try {
+  const envFile = readFileSync('.env', 'utf8');
+  envFile.split('\n').forEach(line => {
+    const [key, ...values] = line.split('=');
+    if (key && values.length > 0 && !key.startsWith('#')) {
+      process.env[key.trim()] = values.join('=').trim();
+    }
+  });
+} catch (error) {
+  // .env файл не найден - не критично
+}
+
 import { HealthMonitor } from '../core/health-monitor.js';
 import { Logger } from '../utils/logger.js';
 import { config } from '../core/config.js';

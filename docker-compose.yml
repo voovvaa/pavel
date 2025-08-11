@@ -1,0 +1,87 @@
+# Docker Compose для Гейсандра Куловича
+
+services:
+  # Основной бот
+  geysandr-bot:
+    # При CI/CD эта строка будет заменена на image: 
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: geysandr-kylovich-bot
+    restart: unless-stopped
+    
+    # Переменные окружения из .env файла  
+    env_file:
+      - .env.docker
+    
+    # Тома для постоянного хранения данных
+    volumes:
+      - bot-data:/app/data
+      - bot-logs:/app/logs
+      # Опционально: mount personality для обновлений
+      - ./chat/result_personality.json:/app/chat/result_personality.json:ro
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "bun", "run", "health-check", "--quick"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    
+    # Ресурсы контейнера
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    
+    # Логирование
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+    
+    # Сеть
+    networks:
+      - bot-network
+    
+    # Метки для мониторинга
+    labels:
+      - "traefik.enable=false"
+      - "app=geysandr-bot"
+      - "version=1.0.0"
+
+  # Опциональный мониторинг (можно отключить комментированием)
+  # monitoring:
+  #   image: prom/prometheus:latest
+  #   container_name: bot-monitoring
+  #   restart: unless-stopped
+  #   ports:
+  #     - "9090:9090"
+  #   volumes:
+  #     - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+  #     - prometheus-data:/prometheus
+  #   networks:
+  #     - bot-network
+
+# Именованные тома для данных
+volumes:
+  bot-data:
+    driver: local
+    name: geysandr_bot_data
+  bot-logs:
+    driver: local
+    name: geysandr_bot_logs
+  # prometheus-data:
+  #   driver: local
+
+# Сеть для изоляции
+networks:
+  bot-network:
+    driver: bridge
+    name: geysandr_network

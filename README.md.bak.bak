@@ -1,0 +1,39 @@
+## Running the Project with Docker
+
+This project uses Bun (version 1.2, Alpine) and TypeScript, with a multi-stage Dockerfile for efficient builds and minimal runtime images. The main application runs on port **3000**.
+
+### Requirements
+- **Bun version:** 1.2 (Alpine image)
+- **Dependencies:** Installed via `bun install --frozen-lockfile --production` using `package.json` and `bun.lock`.
+
+### Environment Variables
+- The Docker Compose file supports environment variables via an `.env` file in the project root. Example files are provided:
+  - `.env.example`
+  - `.env.docker.example`
+- **To enable environment variables:** Uncomment the `env_file: ./.env` line in `docker-compose.yml` and ensure your `.env` file is present and configured as needed for your environment.
+
+### Build and Run Instructions
+1. **Build and start the service:**
+   ```sh
+   docker compose up --build
+   ```
+   This will build the Bun/TypeScript app using the multi-stage Dockerfile and start the container.
+
+2. **Service details:**
+   - **Service name:** `bun-src`
+   - **Image:** `bun-src:dev`
+   - **Container name:** `bun-src`
+   - **Port exposed:** `3000` (host:container)
+   - **Network:** `appnet` (custom bridge network for inter-service communication)
+
+### Special Configuration
+- The Dockerfile creates a non-root user (`appuser`) for running the app, improving security.
+- Only the built output (`/dist`), `package.json`, and `bun.lock` are included in the final image for minimal footprint.
+- If you need to add a database or cache, update the `depends_on` section in `docker-compose.yml` and extend the network as needed.
+
+### Additional Notes
+- For production deployments, ensure your `.env` file contains all required environment variables as per `.env.example` or `.env.docker.example`.
+- The main application entry point is `bun run prod`.
+
+---
+*This section was updated to reflect the current Docker setup for Bun/TypeScript as defined in the provided Dockerfile and Docker Compose configuration.*

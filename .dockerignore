@@ -1,0 +1,104 @@
+# 1. Version control
+.git/
+.gitignore
+.svn/
+.hg/
+
+# 2. Node.js dependencies and logs
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+
+# 3. Build outputs and artifacts
+dist/
+build/
+out/
+
+# 4. Test and debug files
+test/
+tests/
+*.test.js
+*.test.ts
+*.spec.js
+*.spec.ts
+*.log
+debug/
+
+# 5. IDE/editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# 6. Environment and secrets
+.env
+.env.*
+*.env
+*.pem
+*.key
+*.crt
+config.local.*
+*.local.yml
+
+# 7. Temporary and local files
+tmp/
+temp/
+.local/
+local/
+*.tmp
+
+# 8. Project-specific large/binary/media files
+chat/files/
+chat/photos/
+chat/result.json
+chat/result_analysis.json
+chat/result_personality.json
+chat/round_video_messages/
+chat/stickers/
+chat/video_files/
+chat/voice_messages/
+
+# 9. Documentation and markdown
+README*
+*.md
+docs/
+
+# 10. Docker and compose files
+Dockerfile*
+docker-compose*
+
+# 11. Backup and old config files
+*.bak
+
+# 12. Miscellaneous
+*.tgs
+*.webp
+*.webm
+*.mp4
+*.MP4
+*.ogg
+*.ts
+*.torrent
+*.HEIC
+
+# 13. Python cache (for completeness)
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+
+# 14. Go cache (for completeness)
+/vendor/
+*.test
+.go-cache/
+
+# 15. Java build (for completeness)
+target/
+*.class
+.gradle/
+
+# Exclude the Docker context root files you want to keep (uncomment if needed)
+#!src/
