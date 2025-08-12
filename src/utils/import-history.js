@@ -1,18 +1,32 @@
 import fs from 'fs';
 import { Database } from 'bun:sqlite';
 
+// Определяем режим работы из переменной или аргумента
+const isProduction = process.env.NODE_ENV === 'production' || process.argv.includes('--production');
+
 // Загружаем историю чата
-const historyFile = process.env.NODE_ENV === 'production' 
+const historyFile = isProduction
   ? '/app/chat/result.json' 
   : './chat/result.json';
-const dbPath = process.env.NODE_ENV === 'production' 
+const dbPath = isProduction
   ? '/app/data/memory.db' 
   : './memory.db';
+  
+console.log(`🔍 NODE_ENV: ${process.env.NODE_ENV} (production: ${isProduction})`);
+console.log(`🗃️ Database path: ${dbPath}`);
 
 console.log('📚 Загружаем историю чата...');
 const history = JSON.parse(fs.readFileSync(historyFile, 'utf8'));
 
-// Подключаемся к базе данных
+// Удаляем старую базу и создаем новую  
+try {
+  fs.unlinkSync(dbPath);
+  console.log('🗑️ Старая база данных удалена');
+} catch (error) {
+  // Файл не существует - это нормально
+}
+
+// Создаем новую базу данных
 const db = new Database(dbPath);
 
 console.log('🗃️ Создаем таблицы...');
@@ -285,5 +299,15 @@ console.log(`💬 Всего сообщений: ${totalMessages.count}`);
 console.log(`🏷️ Всего тем: ${totalTopics.count}`);
 console.log(`👥 Всего пользователей: ${totalUsers.count}`);
 
+console.log('💾 Финальная синхронизация...');
+db.run('PRAGMA wal_checkpoint(FULL)'); // Принудительно записываем WAL файл
+db.run('PRAGMA optimize');
+console.log(`📁 База данных находится в: ${dbPath}`);
+const dbExists = require('fs').existsSync(dbPath);
+console.log(`📊 Файл базы существует: ${dbExists}`);
+if (dbExists) {
+  const stats = require('fs').statSync(dbPath);
+  console.log(`📏 Размер файла: ${Math.round(stats.size / 1024)}KB`);
+}
 db.close();
 console.log('🎉 Готово! Гейсандр теперь помнит всю историю чата!');

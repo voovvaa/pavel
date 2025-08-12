@@ -80,11 +80,11 @@ ssh -i "$SSH_KEY_PATH" "$NAS_USER@$NAS_IP" \
 
 info "Импортируем историю в новую базу..."
 ssh -i "$SSH_KEY_PATH" "$NAS_USER@$NAS_IP" \
-  "cd $PROJECT_DIR && NODE_ENV=production /usr/local/bin/docker compose run --rm -v geysandr_bot_data:/app/data geysandr-bot bun run import-history" || {
+  "cd $PROJECT_DIR && /usr/local/bin/docker compose run --rm -v geysandr_bot_data:/app/data geysandr-bot bun run import-history --production" || {
   warn "Импорт через package.json не удался, попробуем прямой запуск..."
   
   ssh -i "$SSH_KEY_PATH" "$NAS_USER@$NAS_IP" \
-    "cd $PROJECT_DIR && NODE_ENV=production /usr/local/bin/docker compose run --rm -v geysandr_bot_data:/app/data geysandr-bot bun dist/utils/import-history.js" || {
+    "cd $PROJECT_DIR && /usr/local/bin/docker compose run --rm -v geysandr_bot_data:/app/data geysandr-bot bun dist/utils/import-history.js --production" || {
     warn "Импорт через контейнер не удался, используем fallback..."
     
     # Fallback: копируем базу локально
