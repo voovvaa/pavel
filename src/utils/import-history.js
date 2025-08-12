@@ -91,9 +91,9 @@ const updateTopic = db.prepare(`
 
 const insertUser = db.prepare(`
   INSERT OR IGNORE INTO user_relationships (
-    chat_id, user_name, relationship, last_interaction,
-    interaction_count, common_topics, mood
-  ) VALUES ($chat_id, $user_name, 'friend', $last_interaction, 1, '[]', 'neutral')
+    chat_id, user_name, relationship_type, last_interaction,
+    interaction_count, shared_topics
+  ) VALUES ($chat_id, $user_name, 'friend', $last_interaction, 1, '[]')
 `);
 
 const updateUser = db.prepare(`
