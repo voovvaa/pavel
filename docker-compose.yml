@@ -3,7 +3,6 @@
 services:
   # Основной бот
   geysandr-bot:
-    # При CI/CD эта строка будет заменена на image: 
     build:
       context: .
       dockerfile: Dockerfile
@@ -18,14 +17,12 @@ services:
     volumes:
       - bot-data:/app/data
       - bot-logs:/app/logs
-      # Mount исходного чата для обучения
-      - ./data/chat:/app/data/chat
-      # Опционально: mount personality после создания
-      # - ./data/chat/result_personality.json:/app/data/chat/result_personality.json:ro
+      # Mount чата для обучения (только если файл существует)
+      - ./chat:/app/chat:ro
     
     # Health check
     healthcheck:
-      test: ["CMD", "bun", "run", "health-check", "--quick"]
+      test: ["CMD", "sh", "-c", "cd /app && bun run health-check --quick"]
       interval: 60s
       timeout: 10s
       retries: 3
