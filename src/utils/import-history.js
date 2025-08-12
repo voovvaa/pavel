@@ -2,14 +2,70 @@ import fs from 'fs';
 import { Database } from 'bun:sqlite';
 
 // Загружаем историю чата
-const historyFile = './chat/result.json';
-const dbPath = './memory.db';
+const historyFile = process.env.NODE_ENV === 'production' 
+  ? '/app/chat/result.json' 
+  : './chat/result.json';
+const dbPath = process.env.NODE_ENV === 'production' 
+  ? '/app/data/memory.db' 
+  : './memory.db';
 
 console.log('📚 Загружаем историю чата...');
 const history = JSON.parse(fs.readFileSync(historyFile, 'utf8'));
 
 // Подключаемся к базе данных
 const db = new Database(dbPath);
+
+console.log('🗃️ Создаем таблицы...');
+
+// Создаем таблицы если их нет
+db.exec(`
+  CREATE TABLE IF NOT EXISTS messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id TEXT NOT NULL,
+    message_id INTEGER NOT NULL,
+    author TEXT NOT NULL,
+    content TEXT NOT NULL,
+    timestamp DATETIME NOT NULL,
+    message_type TEXT DEFAULT 'text',
+    is_from_bot BOOLEAN DEFAULT 0,
+    importance REAL DEFAULT 0.5,
+    emotion TEXT DEFAULT 'neutral',
+    topics TEXT DEFAULT '[]',
+    mentions TEXT DEFAULT '[]',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(chat_id, message_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS chat_topics (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id TEXT NOT NULL,
+    topic TEXT NOT NULL,
+    first_mentioned DATETIME NOT NULL,
+    last_mentioned DATETIME NOT NULL,
+    mention_count INTEGER DEFAULT 1,
+    related_users TEXT DEFAULT '[]',
+    importance REAL DEFAULT 0.5,
+    status TEXT DEFAULT 'active',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(chat_id, topic)
+  );
+
+  CREATE TABLE IF NOT EXISTS user_relationships (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id TEXT NOT NULL,
+    user_name TEXT NOT NULL,
+    interaction_count INTEGER DEFAULT 0,
+    last_interaction DATETIME,
+    relationship_type TEXT DEFAULT 'neutral',
+    shared_topics TEXT DEFAULT '[]',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(chat_id, user_name)
+  );
+`);
+
+console.log('✅ Таблицы созданы');
 
 // Подготавливаем запросы
 const insertMessage = db.prepare(`
