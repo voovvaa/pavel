@@ -54,11 +54,13 @@ chat/files/
 chat/photos/
 chat/result.json
 chat/result_analysis.json
-chat/result_personality.json
 chat/round_video_messages/
 chat/stickers/
 chat/video_files/
 chat/voice_messages/
+
+# Keep personality file for Docker
+!chat/result_personality.json
 
 # 9. Documentation and markdown
 README*
@@ -79,9 +81,12 @@ docker-compose*
 *.mp4
 *.MP4
 *.ogg
-*.ts
 *.torrent
 *.HEIC
+
+# Allow TypeScript source files
+!src/**/*.ts
+!*.ts
 
 # 13. Python cache (for completeness)
 __pycache__/

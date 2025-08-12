@@ -24,7 +24,7 @@ import { config } from '../core/config.js';
 async function runHealthCheck() {
   console.log('🩺 Гейсандр Кулович - Проверка здоровья системы\n');
 
-  const monitor = new HealthMonitor(config.allowedChatId);
+  const monitor = new HealthMonitor(config.allowedChatId || 'temp');
 
   try {
     // Получаем аргументы командной строки

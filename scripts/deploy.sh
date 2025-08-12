@@ -1,117 +1,132 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Скрипт деплоя Гейсандра Куловича на Synology NAS
-set -e
+# ---- Config ----
+NAS_IP="${NAS_IP:-}"
+NAS_USER="${NAS_USER:-volodya}"
+SSH_KEY_PATH="${SSH_KEY_PATH:-$HOME/.ssh/synology_github_actions}"
+PROJECT_DIR="${PROJECT_DIR:-/volume1/docker/geysandr-bot}"
 
-# Цвета для вывода
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+# Files/dirs to sync (relative to repo root)
+RSYNC_EXCLUDES=(
+  ".git/"
+  "node_modules/"
+  "dist/"
+  ".DS_Store"
+  "*.log"
+  "backups/"
+)
 
-# Функция логирования
-log() {
-    echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')] $1${NC}"
+# ---- Helpers ----
+log()    { printf '\033[0;32m[%(%F %T)T] %s\033[0m\n' -1 "$*"; }
+warn()   { printf '\033[1;33m[%(%F %T)T] ⚠️  %s\033[0m\n' -1 "$*"; }
+error()  { printf '\033[0;31m[%(%F %T)T] ❌ %s\033[0m\n' -1 "$*"; exit 1; }
+
+need()   { command -v "$1" >/dev/null 2>&1 || error "Требуется команда '$1'"; }
+
+ssh_cmd() {
+  local host="$NAS_USER@$NAS_IP"
+  if [[ -n "$SSH_KEY_PATH" && -f "$SSH_KEY_PATH" ]]; then
+    ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$host" "$@"
+  else
+    ssh -o StrictHostKeyChecking=no "$host" "$@"
+  fi
 }
 
-warn() {
-    echo -e "${YELLOW}[$(date +'%Y-%m-%d %H:%M:%S')] ⚠️  $1${NC}"
+scp_cmd() {
+  local src="$1" dst="$2"
+  local host="$NAS_USER@$NAS_IP"
+  if [[ -n "$SSH_KEY_PATH" && -f "$SSH_KEY_PATH" ]]; then
+    scp -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no -r "$src" "$host:$dst"
+  else
+    scp -o StrictHostKeyChecking=no -r "$src" "$host:$dst"
+  fi
 }
 
-error() {
-    echo -e "${RED}[$(date +'%Y-%m-%d %H:%M:%S')] ❌ $1${NC}"
-    exit 1
+rsync_push() {
+  local host="$NAS_USER@$NAS_IP"
+  local exclude_args=()
+  for p in "${RSYNC_EXCLUDES[@]}"; do exclude_args+=(--exclude "$p"); done
+  if [[ -n "$SSH_KEY_PATH" && -f "$SSH_KEY_PATH" ]]; then
+    rsync -az --delete -e "ssh -i $SSH_KEY_PATH -o StrictHostKeyChecking=no" "${exclude_args[@]}" ./ "$host:$PROJECT_DIR/"
+  else
+    rsync -az --delete -e "ssh -o StrictHostKeyChecking=no" "${exclude_args[@]}" ./ "$host:$PROJECT_DIR/"
+  fi
 }
 
-# Проверяем наличие docker
-if ! command -v docker &> /dev/null; then
-    error "Docker не установлен"
-fi
-
-if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
-    error "Docker Compose не установлен"
-fi
-
-# Переменные
-IMAGE_NAME="geysandr-bot"
-IMAGE_TAG="latest"
-COMPOSE_CMD="docker compose"
-
-# Проверяем версию docker compose
-if ! docker compose version &> /dev/null; then
-    COMPOSE_CMD="docker-compose"
-fi
-
-log "🚀 Начинаем деплой Гейсандра Куловича..."
-
-# Проверяем наличие .env.docker
-if [ ! -f ".env.docker" ]; then
-    warn ".env.docker не найден"
-    if [ -f ".env.docker.example" ]; then
-        log "Копируем .env.docker.example -> .env.docker"
-        cp .env.docker.example .env.docker
-        warn "❗ Отредактируйте .env.docker перед продолжением"
-        read -p "Нажмите Enter когда готово..."
-    else
-        error ".env.docker.example не найден"
-    fi
-fi
-
-# Проверяем наличие файла личности
-if [ ! -f "chat/result_personality.json" ]; then
-    warn "Файл личности не найден. Запускаем переобучение..."
-    if [ -f "chat/result.json" ]; then
-        bun run analyze chat/result.json
-        bun run patterns chat/result_analysis.json
-        log "✅ Личность обновлена"
-    else
-        error "chat/result.json не найден. Экспортируйте чат из Telegram"
-    fi
-fi
-
-# Останавливаем старый контейнер
-log "⏹️  Останавливаем старые контейнеры..."
-$COMPOSE_CMD down --remove-orphans || warn "Контейнеры не были запущены"
-
-# Собираем образ
-log "🔨 Собираем Docker образ..."
-$COMPOSE_CMD build --no-cache
-
-# Запускаем health check
-log "🩺 Проверяем здоровье системы..."
-if ! bun run health-check --quick; then
-    warn "Health check показал проблемы, но продолжаем деплой"
-fi
-
-# Запускаем контейнеры
-log "▶️  Запускаем контейнеры..."
-$COMPOSE_CMD up -d
-
-# Ждем запуска
-log "⏳ Ждем запуска бота (30 сек)..."
-sleep 30
-
-# Проверяем статус
-log "📊 Проверяем статус контейнеров..."
-$COMPOSE_CMD ps
-
-# Проверяем логи
-log "📜 Последние логи:"
-$COMPOSE_CMD logs --tail=20 geysandr-bot
-
-# Финальная проверка
-if $COMPOSE_CMD ps | grep -q "Up"; then
-    log "🎉 Деплой завершен успешно!"
-    log "📱 Гейсандр Кулович готов к общению"
-    
-    echo ""
-    echo -e "${BLUE}Полезные команды:${NC}"
-    echo "  $COMPOSE_CMD logs -f geysandr-bot     # Смотреть логи в реальном времени"
-    echo "  $COMPOSE_CMD exec geysandr-bot bun run health-check  # Проверка здоровья"
-    echo "  $COMPOSE_CMD restart geysandr-bot     # Перезапуск бота"
-    echo "  $COMPOSE_CMD down                     # Остановка всех контейнеров"
-    
+detect_compose_remote() {
+  ssh_cmd '\
+DOCKER_BIN="";
+for d in docker /usr/local/bin/docker /var/packages/Docker/target/usr/bin/docker /var/packages/ContainerManager/target/usr/bin/docker; do
+  if [ -x "$d" ]; then DOCKER_BIN="$d"; break; fi
+done
+if [ -n "$DOCKER_BIN" ] && $DOCKER_BIN compose version >/dev/null 2>&1; then
+  echo "$DOCKER_BIN compose"
+elif command -v docker-compose >/dev/null 2>&1; then
+  echo "docker-compose"
+elif [ -x /usr/local/bin/docker-compose ]; then
+  echo "/usr/local/bin/docker-compose"
+elif [ -x /var/packages/Docker/target/bin/docker-compose ]; then
+  echo "/var/packages/Docker/target/bin/docker-compose"
 else
-    error "Деплой не удался. Проверьте логи: $COMPOSE_CMD logs geysandr-bot"
+  echo ""
+fi'
+}
+
+healthcheck_remote() {
+  local COMPOSE_CMD="$1"
+  # Try explicit health-check task if present
+  if ssh_cmd "cd $PROJECT_DIR && $COMPOSE_CMD run --rm geysandr-bot bun run health-check --quick" >/dev/null 2>&1; then
+    return 0
+  fi
+  # Fallback: wait for healthy status via docker
+  local name="geysandr-kylovich-bot"
+  for i in {1..20}; do
+    local st
+    st=$(ssh_cmd "docker inspect -f '{{.State.Health.Status}}' $name" 2>/dev/null || true)
+    if [[ "$st" == "healthy" ]]; then return 0; fi
+    sleep 3
+  done
+  return 1
+}
+
+# ---- Checks ----
+[[ -n "$NAS_IP" ]] || error "Укажи NAS_IP: пример запуск: NAS_IP=192.168.1.10 ./deploy.sh"
+need ssh
+need rsync
+
+log "📡 Проверяем доступность NAS..."
+ping -c 2 "$NAS_IP" >/dev/null 2>&1 || warn "Ping не проходит — продолжаю по SSH"
+
+log "🐳 Проверяем Docker на NAS..."
+DOCKER_V=$(ssh_cmd 'docker --version 2>/dev/null' || true)
+[[ -n "$DOCKER_V" ]] || error "Docker не найден на NAS"
+
+COMPOSE_CMD="$(detect_compose_remote)"
+[[ -n "$COMPOSE_CMD" ]] || error "Не найден docker compose на NAS"
+log "✅ Compose: $COMPOSE_CMD"
+
+# ---- Sync project ----
+log "📁 Готовлю директорию на NAS: $PROJECT_DIR"
+ssh_cmd "mkdir -p $PROJECT_DIR"
+
+log "🚚 Синхронизирую проект на NAS (rsync)..."
+rsync_push
+
+# ---- Build & Up ----
+log "🏗️  Сборка образа (на NAS)"
+ssh_cmd "cd $PROJECT_DIR && $COMPOSE_CMD -f docker-compose.yml build --pull"
+
+log "▶️  Запуск контейнера"
+ssh_cmd "cd $PROJECT_DIR && $COMPOSE_CMD -f docker-compose.yml up -d"
+
+log "🩺 Жду health-check..."
+if healthcheck_remote "$COMPOSE_CMD"; then
+  log "✅ Контейнер в состоянии healthy"
+else
+  warn "Health-check не прошёл. Показываю последние логи:"
+  ssh_cmd "cd $PROJECT_DIR && $COMPOSE_CMD logs --tail=200 geysandr-bot || true"
+  exit 1
 fi
+
+log "🎉 Деплой завершён"

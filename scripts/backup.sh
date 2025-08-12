@@ -1,65 +1,29 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Скрипт бэкапа данных бота
-set -e
+NAS_IP="${NAS_IP:-}"
+NAS_USER="${NAS_USER:-volodya}"
+SSH_KEY_PATH="${SSH_KEY_PATH:-$HOME/.ssh/synology_github_actions}"
+PROJECT_DIR="${PROJECT_DIR:-/volume1/docker/geysandr-bot}"
+KEEP="${KEEP:-10}"
 
-# Цвета
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
+log(){ printf '\033[0;32m[%(%F %T)T] %s\033[0m\n' -1 "$*"; }
+error(){ printf '\033[0;31m[%(%F %T)T] ❌ %s\033[0m\n' -1 "$*"; exit 1; }
 
-log() {
-    echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')] $1${NC}"
+ssh_cmd() {
+  local host="$NAS_USER@$NAS_IP"
+  if [[ -f "$SSH_KEY_PATH" ]]; then
+    ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$host" "$@"
+  else
+    ssh -o StrictHostKeyChecking=no "$host" "$@"
+  fi
 }
 
-warn() {
-    echo -e "${YELLOW}[$(date +'%Y-%m-%d %H:%M:%S')] ⚠️  $1${NC}"
-}
+[[ -n "$NAS_IP" ]] || error "Укажи NAS_IP: пример NAS_IP=192.168.1.10 ./backup.sh"
 
-# Создаем директорию для бэкапов
-BACKUP_DIR="backups/$(date +'%Y%m%d_%H%M%S')"
-mkdir -p "$BACKUP_DIR"
-
-log "📦 Создаем бэкап в $BACKUP_DIR"
-
-# Бэкапим базу данных памяти
-if [ -f "memory.db" ]; then
-    log "💾 Бэкапим базу памяти..."
-    cp memory.db "$BACKUP_DIR/"
-else
-    warn "memory.db не найдена"
-fi
-
-# Бэкапим файл личности
-if [ -f "chat/result_personality.json" ]; then
-    log "🎭 Бэкапим личность бота..."
-    mkdir -p "$BACKUP_DIR/chat"
-    cp chat/result_personality.json "$BACKUP_DIR/chat/"
-else
-    warn "result_personality.json не найдена"
-fi
-
-# Бэкапим конфигурацию
-log "⚙️ Бэкапим конфигурацию..."
-cp package.json "$BACKUP_DIR/" 2>/dev/null || true
-cp docker-compose.yml "$BACKUP_DIR/" 2>/dev/null || true
-cp Dockerfile "$BACKUP_DIR/" 2>/dev/null || true
-
-# Если есть .env.docker - делаем бэкап без секретов
-if [ -f ".env.docker" ]; then
-    log "🔐 Бэкапим конфигурацию окружения (без секретов)..."
-    grep -v "TOKEN\|KEY\|SECRET" .env.docker > "$BACKUP_DIR/.env.docker.backup" 2>/dev/null || true
-fi
-
-# Создаем архив
-log "📁 Создаем архив..."
-tar -czf "${BACKUP_DIR}.tar.gz" "$BACKUP_DIR"
-rm -rf "$BACKUP_DIR"
-
-log "✅ Бэкап создан: ${BACKUP_DIR}.tar.gz"
-
-# Очищаем старые бэкапы (оставляем последние 10)
-log "🧹 Очищаем старые бэкапы..."
-ls -t backups/*.tar.gz 2>/dev/null | tail -n +11 | xargs -r rm --
-
-log "🎉 Бэкап завершен!"
+TS="$(date +%Y%m%d_%H%M%S)"
+log "📦 Бэкап на NAS ($PROJECT_DIR/backups) — $TS"
+ssh_cmd "cd $PROJECT_DIR && tar -czf backups/backup_${TS}.tar.gz data/ chat/ .env.docker docker-compose.yml 2>/dev/null || true"
+log "🧹 Чищу старые бэкапы, оставляю $KEEP шт."
+ssh_cmd "cd $PROJECT_DIR/backups && ls -1t backup_*.tar.gz | tail -n +$((KEEP+1)) | xargs -r rm -f"
+log "✅ Готово"

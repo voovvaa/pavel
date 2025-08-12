@@ -150,6 +150,8 @@ async function main() {
     Logger.error('Ошибка просмотра памяти:', error);
     process.exit(1);
   }
+  
+  process.exit(0);
 }
 
 // Запуск если файл вызван напрямую

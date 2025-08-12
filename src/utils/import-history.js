@@ -47,19 +47,15 @@ const updateUser = db.prepare(`
   WHERE chat_id = $chat_id AND user_name = $user_name
 `);
 
-// Фильтруем только недавние сообщения (последние 6 месяцев) и только от людей
-const sixMonthsAgo = new Date();
-sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-
-console.log(`📅 Импортируем сообщения с ${sixMonthsAgo.toISOString().split('T')[0]}...`);
+// Фильтруем все сообщения (вся история чата)
+console.log('📅 Импортируем всю историю чата...');
 
 const messages = history.messages.filter(msg => {
   if (msg.type !== 'message') return false;
   if (!msg.text || typeof msg.text !== 'string') return false;
   if (msg.text.trim().length < 3) return false; // Пропускаем очень короткие
   
-  const messageDate = new Date(msg.date);
-  return messageDate >= sixMonthsAgo;
+  return true; // Импортируем все сообщения!
 });
 
 console.log(`✅ Найдено ${messages.length} подходящих сообщений для импорта`);

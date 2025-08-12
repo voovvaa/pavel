@@ -18,8 +18,10 @@ services:
     volumes:
       - bot-data:/app/data
       - bot-logs:/app/logs
-      # Опционально: mount personality для обновлений
-      - ./chat/result_personality.json:/app/chat/result_personality.json:ro
+      # Mount исходного чата для обучения
+      - ./data/chat:/app/data/chat
+      # Опционально: mount personality после создания
+      # - ./data/chat/result_personality.json:/app/data/chat/result_personality.json:ro
     
     # Health check
     healthcheck:
@@ -28,16 +30,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-    
-    # Ресурсы контейнера
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 512M
-        reservations:
-          cpus: '0.5'
-          memory: 256M
     
     # Логирование
     logging:

@@ -7,6 +7,9 @@ yarn-error.log*
 # Скомпилированные файлы
 dist/
 build/
+deploy.tar.gz
+deploy-to-nas.sh
+chat
 
 # Переменные окружения
 .env
@@ -14,7 +17,10 @@ build/
 .env.development.local
 .env.test.local
 .env.production.local
+.env.docker
 
+
+memory.db
 # IDE
 .vscode/
 .idea/
@@ -32,4 +38,23 @@ Thumbs.db
 # Временные файлы
 *.tmp
 *.temp
-chat
+temp/
+*.bak
+*.bak.*
+
+# Тестовые данные
+mock-*.json
+test-*.json
+
+# База данных (если не нужна в git)
+# memory.db
+
+# Медиа файлы чатов (частично игнорируем)
+chat/photos/*
+!chat/photos/*.md
+chat/files/*.torrent
+chat/files/*.rar
+chat/files/*.zip
+chat/files/*.mp3
+chat/files/*.m4a
+chat/files/*.webm
