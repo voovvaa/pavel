@@ -80,11 +80,11 @@ ssh -i "$SSH_KEY_PATH" "$NAS_USER@$NAS_IP" \
 
 info "Импортируем историю в новую базу..."
 ssh -i "$SSH_KEY_PATH" "$NAS_USER@$NAS_IP" \
-  "cd $PROJECT_DIR && NODE_ENV=production /usr/local/bin/docker compose run --rm geysandr-bot bun run import-history" || {
+  "cd $PROJECT_DIR && NODE_ENV=production /usr/local/bin/docker compose run --rm -v geysandr_bot_data:/app/data geysandr-bot bun run import-history" || {
   warn "Импорт через package.json не удался, попробуем прямой запуск..."
   
   ssh -i "$SSH_KEY_PATH" "$NAS_USER@$NAS_IP" \
-    "cd $PROJECT_DIR && NODE_ENV=production /usr/local/bin/docker compose run --rm geysandr-bot bun dist/utils/import-history.js" || {
+    "cd $PROJECT_DIR && NODE_ENV=production /usr/local/bin/docker compose run --rm -v geysandr_bot_data:/app/data geysandr-bot bun dist/utils/import-history.js" || {
     warn "Импорт через контейнер не удался, используем fallback..."
     
     # Fallback: копируем базу локально
@@ -93,7 +93,7 @@ ssh -i "$SSH_KEY_PATH" "$NAS_USER@$NAS_IP" \
       ssh -i "$SSH_KEY_PATH" "$NAS_USER@$NAS_IP" \
         "cat > /tmp/memory.db" < ./memory.db
       ssh -i "$SSH_KEY_PATH" "$NAS_USER@$NAS_IP" \
-        "/usr/local/bin/docker compose run --rm -v /tmp/memory.db:/app/data/memory.db geysandr-bot echo 'База скопирована'"
+        "/usr/local/bin/docker volume create geysandr_bot_data && /usr/local/bin/docker run --rm -v geysandr_bot_data:/data -v /tmp/memory.db:/tmp/memory.db alpine cp /tmp/memory.db /data/memory.db"
       success "База данных скопирована как fallback"
     else
       error "Импорт не удался и локальная база не найдена"
