@@ -233,7 +233,7 @@ export class MemoryManager {
 
     const messageId = (result as any).lastInsertRowid || this.db.lastInsertRowid || 1;
 
-    // ЭТАП 8: Обновляем эмоциональный профиль пользователя
+      // ЭТАП 8: Обновляем эмоциональный профиль пользователя
     if (!entry.isFromBot && emotionAnalysis) {
       this.updateEmotionalProfile(entry.author, emotionAnalysis);
     }

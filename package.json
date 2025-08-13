@@ -7,27 +7,7 @@
   "scripts": {
     "dev": "bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
-    "build": "bun build src/index.ts --outdir dist --target node",
-    "prod": "bun run dist/index.js",
     "type-check": "tsc --noEmit",
-    "analyze": "bun run src/analysis/analyzer.ts",
-    "patterns": "bun run src/analysis/pattern-extractor-cli.ts",
-    "test-ai": "bun run src/ai/ai-tester.ts",
-    "health-check": "NODE_ENV=production bun run dist/utils/health-check.js || bun run src/utils/health-check.ts",
-    "cache-stats": "NODE_ENV=production bun run dist/utils/cache-analyzer.js || bun run src/utils/cache-analyzer.ts",
-    "memory-stats": "NODE_ENV=production bun run dist/memory/memory-viewer.js || bun run src/memory/memory-viewer.ts",
-    "import-history": "bun run dist/utils/import-history.js --production || bun run src/utils/import-history.js --production",
-    "test-images": "bun run src/ai/image-tester-cli.ts",
-    "cost-analysis": "bun run src/ai/cost-analyzer.ts",
-    "setup-nas": "./scripts/setup-synology.sh",
-    "import-data": "./scripts/import-data-to-nas.sh",
-    "docker:build": "docker compose build",
-    "docker:up": "docker compose up -d",
-    "docker:down": "docker compose down",
-    "docker:logs": "docker compose logs -f geysandr-bot",
-    "docker:deploy": "./scripts/deploy.sh",
-    "docker:update": "./scripts/update.sh",
-    "docker:backup": "./scripts/backup.sh"
   },
   "keywords": ["telegram", "bot", "ai", "personality"],
   "author": "Your Name",
@@ -39,7 +19,6 @@
   },
   "devDependencies": {
     "@types/bun": "^1.2.19",
-    "@types/node": "^22.8.0",
     "@types/node-telegram-bot-api": "^0.64.9",
     "typescript": "^5.7.2"
   }
