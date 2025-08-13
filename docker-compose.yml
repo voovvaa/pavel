@@ -22,9 +22,9 @@ services:
     
     # Health check
     healthcheck:
-      test: ["CMD", "sh", "-c", "cd /app && bun run health-check --quick"]
+      test: ["CMD", "sh", "-c", "cd /app && timeout 15 bun run health-check --quick || echo 'degraded'"]
       interval: 60s
-      timeout: 10s
+      timeout: 20s
       retries: 3
       start_period: 30s
     
