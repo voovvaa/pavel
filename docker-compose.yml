@@ -3,9 +3,10 @@
 services:
   # Основной бот
   geysandr-bot:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: voovaa/geysandr-bot:latest
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
     container_name: geysandr-kylovich-bot
     restart: unless-stopped
     
