@@ -211,8 +211,8 @@ export class MemoryManager {
     const stmt = this.db.prepare(`
       INSERT INTO messages (
         chat_id, message_id, author, content, timestamp, 
-        message_type, is_from_bot, context, importance, 
-        emotion, topics, mentions
+        message_type, is_from_bot, importance, 
+        emotion, topics, mentions, context
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
@@ -224,11 +224,11 @@ export class MemoryManager {
       entry.timestamp.toISOString(),
       entry.messageType,
       entry.isFromBot ? 1 : 0,
-      entry.context || null,
       entry.importance,
       emotionAnalysis?.dominant || entry.emotion || 'neutral',
       entry.topics ? JSON.stringify(entry.topics) : null,
-      entry.mentions ? JSON.stringify(entry.mentions) : null
+      entry.mentions ? JSON.stringify(entry.mentions) : null,
+      entry.context || null
     );
 
     const messageId = (result as any).lastInsertRowid || this.db.lastInsertRowid || 1;
