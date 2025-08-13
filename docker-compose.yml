@@ -3,7 +3,7 @@
 services:
   # Основной бот
   geysandr-bot:
-    image: voovaa/geysandr-bot:latest
+    image: vvoovaa/geysandr-bot:latest
     # build:
     #   context: .
     #   dockerfile: Dockerfile

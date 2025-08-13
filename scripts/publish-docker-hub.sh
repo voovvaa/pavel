@@ -9,7 +9,7 @@ error(){ echo -e "${RED}[$(date +'%Y-%m-%d %H:%M:%S')] ❌ $*${NC}"; exit 1; }
 info(){ echo -e "${BLUE}[$(date +'%Y-%m-%d %H:%M:%S')] ℹ️  $*${NC}"; }
 success(){ echo -e "${PURPLE}[$(date +'%Y-%m-%d %H:%M:%S')] ✅ $*${NC}"; }
 
-DOCKER_REPO="${DOCKER_REPO:-voovaa/geysandr-bot}"
+DOCKER_REPO="${DOCKER_REPO:-vvoovaa/geysandr-bot}"
 TIMESTAMP=$(date +%Y%m%d-%H%M)
 
 log "🐳 Публикация образа в Docker Hub: $DOCKER_REPO"
