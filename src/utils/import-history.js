@@ -53,6 +53,7 @@ db.exec(`
     timestamp DATETIME NOT NULL,
     message_type TEXT DEFAULT 'text',
     is_from_bot BOOLEAN DEFAULT 0,
+    context TEXT,
     importance REAL DEFAULT 0.5,
     emotion TEXT DEFAULT 'neutral',
     topics TEXT DEFAULT '[]',
