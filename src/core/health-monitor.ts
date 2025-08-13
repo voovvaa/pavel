@@ -194,7 +194,7 @@ export class HealthMonitor {
     try {
       // Простая проверка доступности API без реального запроса
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
 
       const response = await fetch('https://api.openai.com/v1/models', {
         method: 'GET',
