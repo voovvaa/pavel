@@ -1,20 +1,13 @@
-import { 
-  BotPersonality, 
-  TriggerPattern, 
-  ChatContext,
-  ImageAnalysisResult,
-  MemoryContext
-} from '../core/types.js';
-import { Logger } from '../utils/logger.js';
-import { AIEngine } from './ai-engine.js';
-import { MemoryManager } from '../memory/memory-manager.js';
-import { config } from '../core/config.js';
+import {BotPersonality, ChatContext, config, ImageAnalysisResult, MemoryContext, TriggerPattern} from '../core';
+import {Logger} from '../utils';
+import {AIEngine} from './ai-engine.js';
+import {MemoryManager} from '../memory';
 // ЭТАП 8: Эмоциональная адаптация
-import { EmotionalAdapter, EmotionalAdaptation } from './emotional-adapter.js';
+import {EmotionalAdapter} from './emotional-adapter.js';
 // ЭТАП 9: Динамическая активность
-import { ActivityManager } from '../core/activity-manager.js';
+import {ActivityManager} from '../core/activity-manager.js';
 // Константы производительности
-import { MEMORY_LIMITS, TIMEOUTS, IMPORTANCE_THRESHOLDS, CONTENT_LIMITS } from '../constants/performance.js';
+import {CONTENT_LIMITS, IMPORTANCE_THRESHOLDS} from '../constants/performance.js';
 
 export class ResponseEngine {
   private personality: BotPersonality;
@@ -68,7 +61,7 @@ export class ResponseEngine {
   /**
    * ЭТАП 9: Анализирует контекстную ситуацию для оптимизации поведения
    */
-  private analyzeContextualSituation(messageText: string, author: string): {
+  private analyzeContextualSituation(messageText: string): {
     situationType: 'normal' | 'conflict' | 'celebration' | 'group_discussion' | 'private_moment' | 'technical_discussion';
     behaviorModifier: number;
     responseStyle: 'casual' | 'supportive' | 'humorous' | 'technical' | 'careful';
@@ -271,7 +264,7 @@ export class ResponseEngine {
       const aiResponse = await this.aiEngine.generateResponse(messageText, author, contextWithStyle);
       
       if (aiResponse) {
-        this.updateContext('Гейсандр Кулович', aiResponse, messageId);
+        // updateContext будет вызван в bot.ts после получения реального message_id от Telegram
         return aiResponse;
       } else {
         Logger.warn('AI не смог сгенерировать ответ, используем паттерны');
@@ -282,7 +275,7 @@ export class ResponseEngine {
     const patternResponse = this.generatePatternResponse(messageText);
     
     if (patternResponse) {
-      this.updateContext('Гейсандр Кулович', patternResponse, messageId);
+      // updateContext будет вызван в bot.ts после получения реального message_id от Telegram
       return patternResponse;
     }
 
@@ -401,7 +394,7 @@ export class ResponseEngine {
           });
         }
         
-        this.memoryManager.saveMessage({
+        const memoryEntry = {
           chatId: this.chatId,
           messageId: messageId,
           author: author,
@@ -414,20 +407,54 @@ export class ResponseEngine {
           topics: topics,
           mentions: this.extractMentions(messageText),
           imageAnalysis: imageAnalysis
+        };
+        
+        Logger.debug('🔍 Параметры для saveMessage:', {
+          chatId: memoryEntry.chatId,
+          messageId: memoryEntry.messageId,
+          author: memoryEntry.author,
+          contentLength: memoryEntry.content?.length,
+          messageType: memoryEntry.messageType,
+          isFromBot: memoryEntry.isFromBot,
+          importance: memoryEntry.importance,
+          emotion: memoryEntry.emotion,
+          topicsCount: memoryEntry.topics?.length,
+          mentionsCount: memoryEntry.mentions?.length
         });
+        
+        this.memoryManager.saveMessage(memoryEntry);
 
         // Обновляем отношения с пользователем (только для пользователей, не для бота)
         if (author !== 'Гейсандр Кулович') {
-          this.memoryManager.updateUserRelationship(author, {
-            commonTopics: topics,
-            mood: (['positive', 'friendly', 'excited'].includes(emotion) ? 'positive' : 
-                  ['negative', 'angry', 'sad'].includes(emotion) ? 'negative' : 'neutral') as 'positive' | 'negative' | 'neutral'
-          });
+          try {
+            this.memoryManager.updateUserRelationship(author, {
+              commonTopics: topics,
+              mood: (['positive', 'friendly', 'excited'].includes(emotion) ? 'positive' : 
+                    ['negative', 'angry', 'sad'].includes(emotion) ? 'negative' : 'neutral') as 'positive' | 'negative' | 'neutral'
+            });
+          } catch (relationshipError: any) {
+            Logger.error('❌ Ошибка при обновлении отношений пользователя:', relationshipError);
+            Logger.error('Детали ошибки отношений:', {
+              errno: relationshipError.errno,
+              code: relationshipError.code,
+              message: relationshipError.message
+            });
+          }
         }
 
         Logger.memory(`Сообщение сохранено: "${messageText.substring(0, 30)}..." от ${author}`);
-      } catch (error) {
+      } catch (error: any) {
         Logger.error('❌ Ошибка сохранения в память:', error);
+        Logger.error('Параметры memoryEntry:', {
+          chatId: memoryEntry.chatId,
+          messageId: memoryEntry.messageId,
+          author: memoryEntry.author,
+          contentLength: memoryEntry.content?.length,
+          messageType: memoryEntry.messageType,
+          isFromBot: memoryEntry.isFromBot,
+          importance: memoryEntry.importance,
+          emotion: memoryEntry.emotion
+        });
       }
     } else {
       Logger.warn(`Не сохраняем в память: memoryManager=${!!this.memoryManager}, messageId=${messageId}`);
@@ -443,7 +470,7 @@ export class ResponseEngine {
   /**
    * Рассчитывает важность сообщения
    */
-  private calculateMessageImportance(text: string, author: string): number {
+  private calculateMessageImportance(text: string): number {
     let importance = 0.5; // Базовая важность
 
     // Прямые обращения важнее
@@ -583,9 +610,7 @@ export class ResponseEngine {
     }
     
     // Убираем дубли и возвращаем максимум тем
-    const uniqueTopics = [...new Set(topics)].slice(0, CONTENT_LIMITS.MAX_TOPICS_PER_MESSAGE);
-    
-    return uniqueTopics;
+      return [...new Set(topics)].slice(0, CONTENT_LIMITS.MAX_TOPICS_PER_MESSAGE);
   }
 
   /**

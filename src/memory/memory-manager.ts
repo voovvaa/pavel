@@ -1,7 +1,6 @@
 import { Database } from 'bun:sqlite';
-import { promises as fs } from 'fs';
-import { Logger } from '../utils/logger.js';
-import { config } from '../core/config.js';
+import { Logger } from '../utils';
+import { config } from '../core';
 import { cacheManager, SmartCache } from '../core/cache-manager.js';
 import { 
   MemoryEntry, 
@@ -9,7 +8,7 @@ import {
   UserRelationship, 
   ChatTopic, 
   MemoryContext 
-} from '../core/types.js';
+} from '../core';
 // ЭТАП 8: Эмоциональный анализ
 import { EmotionAnalyzer, EmotionalProfile, GroupEmotionalState } from '../ai/emotion-analyzer.js';
 // ЭТАП 9: Трекер событий
@@ -81,6 +80,41 @@ export class MemoryManager {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    
+    // Добавляем колонку context если её нет (для уже существующих БД)
+    try {
+      this.db.exec(`ALTER TABLE messages ADD COLUMN context TEXT`);
+    } catch (error: any) {
+      // Колонка уже существует - это нормально
+    }
+    
+    // Добавляем колонку relationship если её нет (для уже существующих БД)
+    try {
+      this.db.exec(`ALTER TABLE user_relationships ADD COLUMN relationship TEXT DEFAULT 'unknown'`);
+    } catch (error: any) {
+      // Колонка уже существует
+    }
+    
+    // Добавляем колонку common_topics если её нет
+    try {
+      this.db.exec(`ALTER TABLE user_relationships ADD COLUMN common_topics TEXT DEFAULT '[]'`);
+    } catch (error: any) {
+      // Колонка уже существует
+    }
+    
+    // Добавляем колонку personal_notes если её нет
+    try {
+      this.db.exec(`ALTER TABLE user_relationships ADD COLUMN personal_notes TEXT DEFAULT ''`);
+    } catch (error: any) {
+      // Колонка уже существует
+    }
+    
+    // Добавляем колонку mood если её нет
+    try {
+      this.db.exec(`ALTER TABLE user_relationships ADD COLUMN mood TEXT DEFAULT 'neutral'`);
+    } catch (error: any) {
+      // Колонка уже существует
+    }
 
     // Таблица сводок разговоров
     this.db.exec(`
@@ -203,20 +237,24 @@ export class MemoryManager {
         entry.author, 
         { recentMessages, userProfile }
       );
-      
-      Logger.debug(`🎭 Эмоциональный анализ для "${entry.content.substring(0, 30)}...": ${emotionAnalysis.dominant} (${(emotionAnalysis.intensity * 100).toFixed(0)}%)`);
     }
 
     // Сначала сохраняем сообщение
-    const stmt = this.db.prepare(`
-      INSERT INTO messages (
-        chat_id, message_id, author, content, timestamp, 
-        message_type, is_from_bot, context, importance, 
-        emotion, topics, mentions
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+    let stmt: any;
+    try {
+      stmt = this.db.prepare(`
+        INSERT INTO messages (
+          chat_id, message_id, author, content, timestamp, 
+          message_type, is_from_bot, context, importance, 
+          emotion, topics, mentions
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+    } catch (prepareError: any) {
+      Logger.error('❌ Ошибка при подготовке SQL:', prepareError);
+      throw prepareError;
+    }
 
-    const result = stmt.run(
+    const params = [
       entry.chatId,
       entry.messageId,
       entry.author,
@@ -229,47 +267,58 @@ export class MemoryManager {
       emotionAnalysis?.dominant || entry.emotion || 'neutral',
       entry.topics ? JSON.stringify(entry.topics) : null,
       entry.mentions ? JSON.stringify(entry.mentions) : null
-    );
-
-    const messageId = (result as any).lastInsertRowid || this.db.lastInsertRowid || 1;
-
+    ];
+    
+    try {
+      const result = stmt.run(...params);
+      const messageId = (result as any).lastInsertRowid || this.db.lastInsertRowid || 1;
+      
       // ЭТАП 8: Обновляем эмоциональный профиль пользователя
-    if (!entry.isFromBot && emotionAnalysis) {
-      this.updateEmotionalProfile(entry.author, emotionAnalysis);
-    }
-
-    // ЭТАП 9: Анализируем сообщение на предмет важных событий
-    if (!entry.isFromBot && entry.content.length > 20) {
-      try {
-        const recentMessages = this.getRecentMessages(5);
-        const messageEntry = { ...entry, id: messageId, emotionAnalysis };
-        const event = this.eventTracker.analyzeMessage(messageEntry, recentMessages.slice(0, -1));
-        
-        if (event) {
-          const eventId = this.eventTracker.saveEvent(event);
-          Logger.debug(`📅 Обнаружено и сохранено событие: ${event.title} (ID: ${eventId})`);
-        }
-      } catch (error) {
-        Logger.warn('Ошибка анализа событий:', error);
+      if (!entry.isFromBot && emotionAnalysis) {
+        this.updateEmotionalProfile(entry.author);
       }
-    }
 
-    return messageId;
+      // ЭТАП 9: Анализируем сообщение на предмет важных событий
+      if (!entry.isFromBot && entry.content.length > 20) {
+        try {
+          const recentMessages = this.getRecentMessages(5);
+          const messageEntry = { ...entry, id: messageId, emotionAnalysis };
+          const event = this.eventTracker.analyzeMessage(messageEntry, recentMessages.slice(0, -1));
+          
+          if (event) {
+            this.eventTracker.saveEvent(event);
+          }
+        } catch (error) {
+          Logger.warn('Ошибка анализа событий:', error);
+        }
+      }
+
+      return messageId;
+      
+    } catch (error: any) {
+      Logger.error('❌ Ошибка выполнения SQL запроса:', error);
+      throw error;
+    }
   }
 
   /**
    * Получает недавние сообщения
    */
   getRecentMessages(limit: number = 20): MemoryEntry[] {
-    const stmt = this.db.prepare(`
-      SELECT * FROM messages 
-      WHERE chat_id = ? 
-      ORDER BY timestamp DESC 
-      LIMIT ?
-    `);
+    try {
+      const stmt = this.db.prepare(`
+        SELECT * FROM messages 
+        WHERE chat_id = ? 
+        ORDER BY timestamp DESC 
+        LIMIT ?
+      `);
 
-    const rows = stmt.all(this.chatId, limit) as any[];
-    return rows.map(this.rowToMemoryEntry).reverse(); // Возвращаем в хронологическом порядке
+      const rows = stmt.all(this.chatId, limit) as any[];
+      return rows.map(this.rowToMemoryEntry).reverse(); // Возвращаем в хронологическом порядке
+    } catch (error: any) {
+      Logger.error('❌ Ошибка в getRecentMessages:', error);
+      return []; // Возвращаем пустой массив в случае ошибки
+    }
   }
 
   /**
@@ -359,10 +408,6 @@ export class MemoryManager {
         this.chatId,
         userName
       );
-      
-      if (isNewDay) {
-        Logger.debug(`📅 Новый день взаимодействия с ${userName} (день ${existing.interactionCount + 1})`);
-      }
     } else {
       // Создаем новую запись (первый день взаимодействия)
       const stmt = this.db.prepare(`
@@ -382,8 +427,6 @@ export class MemoryManager {
         JSON.stringify(updates.personalNotes || []),
         updates.mood || 'neutral'
       );
-      
-      Logger.debug(`👋 Новый пользователь ${userName} - день 1 знакомства`);
     }
   }
 
@@ -614,7 +657,6 @@ export class MemoryManager {
       try {
         const profile: EmotionalProfile = JSON.parse(row.profile_data);
         this.emotionalProfiles.set(row.user_name, profile);
-        Logger.debug(`📊 Загружен эмоциональный профиль для ${row.user_name}: ${profile.temperament}, роль: ${profile.socialRole}`);
       } catch (error) {
         Logger.warn(`Ошибка при загрузке профиля ${row.user_name}:`, error);
       }
@@ -626,12 +668,11 @@ export class MemoryManager {
   /**
    * Обновляет эмоциональный профиль пользователя
    */
-  private updateEmotionalProfile(userName: string, newEmotionAnalysis: any): void {
+  private updateEmotionalProfile(userName: string): void {
     // Получаем историю сообщений пользователя для построения профиля
     const userMessages = this.getUserMessages(userName, 100);
     
     if (userMessages.length < 5) {
-      Logger.debug(`🎭 Недостаточно данных для профиля ${userName} (${userMessages.length} сообщений)`);
       return; // Недостаточно данных для анализа
     }
 
@@ -691,7 +732,6 @@ export class MemoryManager {
 
     const recentMessages = this.getRecentMessages(50);
     if (recentMessages.length < 5) {
-      Logger.debug('🎭 Недостаточно сообщений для группового анализа');
       return null;
     }
 
@@ -964,7 +1004,6 @@ export class MemoryManager {
     this.userCache.cleanup();
     this.topicsCache.cleanup();
     this.profilesCache.cleanup();
-    Logger.debug('🧹 Очистка просроченных кэшей завершена');
   }
 
   /**
@@ -1009,7 +1048,6 @@ export class MemoryManager {
     this.profilesCache.delete(`user_${this.chatId}_${userName}`);
     // Инвалидируем топики так как пользователь мог повлиять на их важность
     this.topicsCache.clear();
-    Logger.debug(`🗑️ Кэши пользователя ${userName} инвалидированы`);
   }
 
   /**

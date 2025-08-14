@@ -1,12 +1,11 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { config } from './config.js';
-import { Logger } from '../utils/logger.js';
-import { ResponseEngine } from '../ai/response-engine.js';
+import { Logger } from '../utils';
+import { ResponseEngine } from '../ai';
 import { ImageAnalyzer, ImageContext } from '../ai/image-analyzer.js';
 import { BotPersonality } from './types.js';
 import { HealthMonitor, HealthStatus } from './health-monitor.js';
 import { promises as fs } from 'fs';
-import { join } from 'path';
 
 export class DigitalPersonalityBot {
   private bot: TelegramBot;
@@ -59,8 +58,14 @@ export class DigitalPersonalityBot {
     }
 
     // Проверяем разрешенные чаты
-    if (config.allowedChatId && msg.chat.id.toString() !== config.allowedChatId) {
-      Logger.warn(`Сообщение из неразрешенного чата: ${msg.chat.id}`);
+    if (config.allowedChatId && config.allowedChatId.trim() !== '') {
+      if (msg.chat.id.toString() !== config.allowedChatId) {
+        Logger.warn(`Сообщение из неразрешенного чата: ${msg.chat.id} (разрешен только: ${config.allowedChatId})`);
+        return;
+      }
+    } else {
+      // Если ALLOWED_CHAT_ID не настроен, не обрабатываем сообщения
+      Logger.warn(`Сообщение из чата ${msg.chat.id} проигнорировано - ALLOWED_CHAT_ID не настроен`);
       return;
     }
     if (msg.from?.is_bot) return;
@@ -271,7 +276,7 @@ export class DigitalPersonalityBot {
         if (response) {
           try {
             const sentMessage = await this.bot.sendMessage(msg.chat.id, response);
-            let logContent = '';
+            let logContent: string;
             if (hasImage || hasDocument) {
               logContent = `изображение (${imageAnalysis?.type}): "${response.substring(0, 100)}..."`;
             } else if (hasVoice || hasAudio || hasVideo || hasVideoNote || hasSticker || hasAnimation || hasOtherDocument) {
@@ -351,7 +356,7 @@ export class DigitalPersonalityBot {
       // Используем абсолютный путь для надежности
       const filePath = await this.bot.downloadFile(fileId, './temp') as string;
       
-      if (typeof filePath === 'string' && filePath.length > 0) {
+      if (filePath.length > 0) {
         // Читаем файл в Buffer - путь может быть относительным или абсолютным
         const fs = await import('fs');
         const path = await import('path');
